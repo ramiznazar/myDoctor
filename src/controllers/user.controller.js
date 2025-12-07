@@ -32,3 +32,11 @@ exports.listUsers = asyncHandler(async (req, res) => {
   const result = await userService.listUsers(req.query);
   res.json({ success: true, message: 'OK', data: result });
 });
+
+/**
+ * List all doctors (admin only)
+ */
+exports.listDoctors = asyncHandler(async (req, res) => {
+  const result = await userService.listDoctors(req.query);
+  res.json({ success: true, message: 'OK', data: result });
+});

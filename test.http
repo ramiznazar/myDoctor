@@ -1,0 +1,218 @@
+### ============================================
+### COMPLETE TESTING FLOW - STEP BY STEP
+### ============================================
+### 
+### INSTRUCTIONS:
+### 1. Uncomment each step (#) one by one
+### 2. Replace YOUR_TOKEN with actual tokens from responses
+### 3. Replace IDs with actual IDs from responses
+### 4. Run each step in sequence
+###
+### ============================================
+
+### ============================================
+### STEP 1: CREATE ADMIN USER (First time only)
+### ============================================
+### Note: If admin already exists, skip to STEP 2
+### You need to manually create admin in database or use registration
+### For now, we'll assume admin exists and login
+
+### STEP 1a: Admin Login
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{
+    "email": "admin@gmail.com",
+    "password": "123456"
+}
+
+### Copy the token from response above and use it in STEP 2
+### Example: "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+###
+### ============================================
+### STEP 2: ADMIN CREATES SUBSCRIPTION PLAN
+### ============================================
+### Replace YOUR_ADMIN_TOKEN with token from STEP 1
+
+POST http://localhost:5000/api/admin/subscription-plan
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTEwMDQ3NCwiZXhwIjoxNzY1NzA1Mjc0fQ._1-hZ6J8sweATuvfXMRHKhuv7UG48GPx2ixLFz-9HRM
+
+{
+    "name": "BASIC",
+    "price": 100,
+    "durationInDays": 30,
+    "features": ["Feature 1", "Feature 2", "Feature 3"]
+}
+
+### Copy the plan ID (_id) from response above
+### Example: "_id": "69351801e43ca55642f854e2"
+
+###
+### ============================================
+### STEP 3: DOCTOR REGISTERS
+### ============================================
+### This creates a new doctor account
+
+POST http://localhost:5000/api/auth/register
+Content-Type: application/json
+
+{
+    "fullName": "Dr. John Doe",
+    "email": "doctor2@gmail.com",
+    "password": "123456",
+    "role": "DOCTOR",
+    "phone": "1234567890",
+    "gender": "MALE"
+}
+
+### Copy the doctor token and doctor ID from response
+### Example: "userId": "69351801e43ca55642f854e2"
+
+###
+### ============================================
+### STEP 4: DOCTOR VIEWS AVAILABLE PLANS (Optional)
+### ============================================
+### Doctor can see what plans are available before buying
+
+GET http://localhost:5000/api/admin/subscription-plan/active
+
+### Copy the plan ID you want to buy from the response
+
+###
+### ============================================
+### STEP 5: DOCTOR BUYS SUBSCRIPTION PLAN
+### ============================================
+### Replace YOUR_DOCTOR_TOKEN with token from STEP 3
+### Replace PLAN_ID_HERE with plan ID from STEP 2 or STEP 4
+
+POST http://localhost:5000/api/doctor/buy-subscription
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1NGM2MTczMTFmZjk1YzNlY2ZiN2IiLCJlbWFpbCI6ImRvY3RvckBnbWFpbC5jb20iLCJyb2xlIjoiRE9DVE9SIiwiaWF0IjoxNzY1MTAwNjQxLCJleHAiOjE3NjU3MDU0NDF9.82Wk6cHGBB8uCVnBUkzZwR18umgp1-JHj4wm7r22IdA
+
+{
+    "planId": "69354bf37311ff95c3ecfb78"
+}
+
+###
+### ============================================
+### STEP 6: DOCTOR CHECKS THEIR SUBSCRIPTION (Optional)
+### ============================================
+### Doctor can verify their subscription was purchased
+
+GET http://localhost:5000/api/doctor/my-subscription
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1NGM2MTczMTFmZjk1YzNlY2ZiN2IiLCJlbWFpbCI6ImRvY3RvckBnbWFpbC5jb20iLCJyb2xlIjoiRE9DVE9SIiwiaWF0IjoxNzY1MTAwNjQxLCJleHAiOjE3NjU3MDU0NDF9.82Wk6cHGBB8uCVnBUkzZwR18umgp1-JHj4wm7r22IdA
+
+###
+### ============================================
+### STEP 7: ADMIN APPROVES DOCTOR
+### ============================================
+### Replace YOUR_ADMIN_TOKEN with token from STEP 1
+### Replace DOCTOR_ID_HERE with doctor ID from STEP 3
+
+POST http://localhost:5000/api/auth/approve-doctor
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTEwMTE4MCwiZXhwIjoxNzY1NzA1OTgwfQ.J2tVk9uC3LMse405HqSDerseF7BwQr-KtZbKTL8QUTg
+
+{
+    "doctorId": "69354c617311ff95c3ecfb7b"
+}
+
+###
+### ============================================
+### VERIFICATION STEPS (Optional)
+### ============================================
+
+### Verify: Admin can see all plans
+GET http://localhost:5000/api/admin/subscription-plan
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTEwMTE4MCwiZXhwIjoxNzY1NzA1OTgwfQ.J2tVk9uC3LMse405HqSDerseF7BwQr-KtZbKTL8QUTg
+
+### Verify: Admin can see all doctors
+GET http://localhost:5000/api/admin/doctors
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTEwMTE4MCwiZXhwIjoxNzY1NzA1OTgwfQ.J2tVk9uC3LMse405HqSDerseF7BwQr-KtZbKTL8QUTg
+
+### Verify: Public can see approved doctors with active subscriptions
+GET http://localhost:5000/api/doctor
+
+###
+### ============================================
+### COMPLETE EXAMPLE WITH REAL VALUES
+### ============================================
+### Below is an example with placeholder values
+### Replace these with actual values from your responses
+
+###
+### STEP 1: Admin Login
+# POST http://localhost:5000/api/auth/login
+# Content-Type: application/json
+#
+# {
+#     "email": "admin@gmail.com",
+#     "password": "123456"
+# }
+#
+# Response will have: { "data": { "token": "eyJ..." } }
+# Copy this token for next steps
+
+###
+### STEP 2: Admin Creates Plan
+# POST http://localhost:5000/api/admin/subscription-plan
+# Content-Type: application/json
+# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+#
+# {
+#     "name": "BASIC",
+#     "price": 100,
+#     "durationInDays": 30,
+#     "features": ["Feature 1", "Feature 2"]
+# }
+#
+# Response will have: { "data": { "_id": "6935..." } }
+# Copy this _id for STEP 5
+
+###
+### STEP 3: Doctor Registers
+# POST http://localhost:5000/api/auth/register
+# Content-Type: application/json
+#
+# {
+#     "fullName": "Dr. John Doe",
+#     "email": "doctor@gmail.com",
+#     "password": "123456",
+#     "role": "DOCTOR"
+# }
+#
+# Response will have: { "data": { "token": "eyJ...", "user": { "_id": "6935..." } } }
+# Copy token for STEP 5, copy _id for STEP 7
+
+###
+### STEP 4: Doctor Views Plans (Optional)
+# GET http://localhost:5000/api/admin/subscription-plan/active
+#
+# Response will show all active plans with their IDs
+
+###
+### STEP 5: Doctor Buys Plan
+# POST http://localhost:5000/api/doctor/buy-subscription
+# Content-Type: application/json
+# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (from STEP 3)
+#
+# {
+#     "planId": "69351801e43ca55642f854e2" (from STEP 2)
+# }
+
+###
+### STEP 6: Doctor Checks Subscription (Optional)
+# GET http://localhost:5000/api/doctor/my-subscription
+# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (from STEP 3)
+
+###
+### STEP 7: Admin Approves Doctor
+# POST http://localhost:5000/api/auth/approve-doctor
+# Content-Type: application/json
+# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (from STEP 1)
+#
+# {
+#     "doctorId": "69351801e43ca55642f854e2" (from STEP 3)
+# }

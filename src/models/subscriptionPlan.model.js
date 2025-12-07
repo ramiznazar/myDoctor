@@ -3,24 +3,26 @@ const mongoose = require('mongoose');
 const subscriptionPlanSchema = new mongoose.Schema({
   name: {
     type: String,
-    enum: ["BASIC", "MEDIUM", "FULL"],
-    default: null
+    required: true
   },
   price: {
     type: Number,
-    default: null
+    required: true,
+    min: 0
   },
   durationInDays: {
     type: Number,
-    default: null
+    required: true,
+    min: 1
   },
   features: {
     type: [String],
-    default: null
+    default: []
   },
-  isActive: {
-    type: Boolean,
-    default: true
+  status: {
+    type: String,
+    enum: ["ACTIVE", "INACTIVE"],
+    default: "ACTIVE"
   }
 }, {
   timestamps: true

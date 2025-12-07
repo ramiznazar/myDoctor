@@ -124,7 +124,12 @@ const listUsers = async (filter = {}) => {
   const skip = (page - 1) * limit;
 
   const [users, total] = await Promise.all([
-    User.find(query).select('-password').skip(skip).limit(limit).sort({ createdAt: -1 }),
+    User.find(query)
+      .select('-password')
+      .populate('subscriptionPlan', 'name price durationInDays features status')
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 }),
     User.countDocuments(query)
   ]);
 
@@ -139,9 +144,81 @@ const listUsers = async (filter = {}) => {
   };
 };
 
+/**
+ * List all doctors with subscription info (admin only)
+ * @param {Object} filter - Filter criteria
+ * @returns {Promise<Object>} Doctors and pagination info
+ */
+const listDoctors = async (filter = {}) => {
+  const {
+    status,
+    subscriptionStatus,
+    search,
+    page = 1,
+    limit = 10
+  } = filter;
+
+  const query = { role: 'DOCTOR' };
+
+  if (status) {
+    query.status = status.toUpperCase();
+  }
+
+  if (search) {
+    query.$or = [
+      { fullName: { $regex: search, $options: 'i' } },
+      { email: { $regex: search, $options: 'i' } }
+    ];
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [doctors, total] = await Promise.all([
+    User.find(query)
+      .select('-password')
+      .populate('subscriptionPlan', 'name price durationInDays features status')
+      .populate('doctorProfile')
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 }),
+    User.countDocuments(query)
+  ]);
+
+  // Filter by subscription status if provided (check expiration date)
+  let filteredDoctors = doctors;
+  if (subscriptionStatus) {
+    const now = new Date();
+    filteredDoctors = doctors.filter(doctor => {
+      if (subscriptionStatus.toUpperCase() === 'ACTIVE') {
+        return doctor.subscriptionPlan && 
+               doctor.subscriptionExpiresAt && 
+               new Date(doctor.subscriptionExpiresAt) > now;
+      } else if (subscriptionStatus.toUpperCase() === 'EXPIRED') {
+        return !doctor.subscriptionPlan || 
+               !doctor.subscriptionExpiresAt || 
+               new Date(doctor.subscriptionExpiresAt) <= now;
+      } else if (subscriptionStatus.toUpperCase() === 'NONE') {
+        return !doctor.subscriptionPlan;
+      }
+      return true;
+    });
+  }
+
+  return {
+    doctors: filteredDoctors,
+    pagination: {
+      page,
+      limit,
+      total: subscriptionStatus ? filteredDoctors.length : total,
+      pages: Math.ceil((subscriptionStatus ? filteredDoctors.length : total) / limit)
+    }
+  };
+};
+
 module.exports = {
   getUserById,
   updateUserProfile,
   updateStatus,
-  listUsers
+  listUsers,
+  listDoctors
 };

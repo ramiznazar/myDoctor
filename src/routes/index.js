@@ -12,6 +12,8 @@ router.get('/health', (req, res) => {
 
 // Mount all route modules
 router.use('/auth', require('./auth.routes'));
+router.use('/admin', require('./admin.routes'));
+router.use('/admin/subscription-plan', require('./subscriptionPlan.routes'));
 router.use('/users', require('./user.routes'));
 router.use('/doctor', require('./doctor.routes'));
 router.use('/specialization', require('./specialization.routes'));

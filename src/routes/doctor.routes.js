@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const doctorController = require('../controllers/doctor.controller');
-const { upsertDoctorProfileValidator } = require('../validators/doctor.validators');
+const { upsertDoctorProfileValidator, buySubscriptionPlanValidator } = require('../validators/doctor.validators');
 const validate = require('../middleware/validate');
 const authGuard = require('../middleware/authGuard');
 const asyncHandler = require('../middleware/asyncHandler');
@@ -26,6 +26,29 @@ router.put(
 router.get(
   '/profile/:id',
   asyncHandler(doctorController.getProfile)
+);
+
+/**
+ * @route   POST /api/doctor/buy-subscription
+ * @desc    Doctor buys a subscription plan
+ * @access  Private (Doctor)
+ */
+router.post(
+  '/buy-subscription',
+  authGuard(['DOCTOR']),
+  validate(buySubscriptionPlanValidator),
+  asyncHandler(doctorController.buySubscriptionPlan)
+);
+
+/**
+ * @route   GET /api/doctor/my-subscription
+ * @desc    Get doctor's current subscription plan
+ * @access  Private (Doctor)
+ */
+router.get(
+  '/my-subscription',
+  authGuard(['DOCTOR']),
+  asyncHandler(doctorController.getMySubscriptionPlan)
 );
 
 /**

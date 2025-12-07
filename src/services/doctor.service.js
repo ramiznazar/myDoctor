@@ -1,6 +1,7 @@
 const DoctorProfile = require('../models/doctorProfile.model');
 const User = require('../models/user.model');
 const Review = require('../models/review.model');
+const SubscriptionPlan = require('../models/subscriptionPlan.model');
 
 /**
  * Upsert doctor profile (create or update)
@@ -157,10 +158,89 @@ const updateDoctorRating = async (doctorId) => {
   return profile;
 };
 
+/**
+ * Doctor buys/selects a subscription plan
+ * @param {string} doctorId - Doctor user ID
+ * @param {string} planId - Subscription plan ID
+ * @returns {Promise<Object>} Updated doctor with subscription info
+ */
+const buySubscriptionPlan = async (doctorId, planId) => {
+  const doctor = await User.findById(doctorId);
+  
+  if (!doctor) {
+    throw new Error('Doctor not found');
+  }
+
+  if (doctor.role !== 'DOCTOR') {
+    throw new Error('User is not a doctor');
+  }
+
+  const plan = await SubscriptionPlan.findById(planId);
+  
+  if (!plan) {
+    throw new Error('Subscription plan not found');
+  }
+
+  if (plan.status !== 'ACTIVE') {
+    throw new Error('Subscription plan is not active');
+  }
+
+  // Calculate expiration date
+  const startDate = new Date();
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + plan.durationInDays);
+
+  // Update doctor subscription
+  doctor.subscriptionPlan = planId;
+  doctor.subscriptionExpiresAt = endDate;
+
+  await doctor.save();
+
+  // Populate plan details
+  await doctor.populate('subscriptionPlan', 'name price durationInDays features status');
+  
+  const doctorObj = doctor.toObject();
+  delete doctorObj.password;
+
+  return {
+    doctor: doctorObj,
+    subscriptionPlan: doctor.subscriptionPlan,
+    subscriptionExpiresAt: doctor.subscriptionExpiresAt
+  };
+};
+
+/**
+ * Get doctor's current subscription plan
+ * @param {string} doctorId - Doctor user ID
+ * @returns {Promise<Object>} Doctor's subscription plan info
+ */
+const getMySubscriptionPlan = async (doctorId) => {
+  const doctor = await User.findById(doctorId)
+    .populate('subscriptionPlan', 'name price durationInDays features status');
+  
+  if (!doctor) {
+    throw new Error('Doctor not found');
+  }
+
+  if (doctor.role !== 'DOCTOR') {
+    throw new Error('User is not a doctor');
+  }
+
+  return {
+    subscriptionPlan: doctor.subscriptionPlan,
+    subscriptionExpiresAt: doctor.subscriptionExpiresAt,
+    hasActiveSubscription: doctor.subscriptionPlan && 
+                          doctor.subscriptionExpiresAt && 
+                          new Date(doctor.subscriptionExpiresAt) > new Date()
+  };
+};
+
 module.exports = {
   upsertDoctorProfile,
   getDoctorProfile,
   listDoctors,
-  updateDoctorRating
+  updateDoctorRating,
+  buySubscriptionPlan,
+  getMySubscriptionPlan
 };
 

@@ -78,7 +78,17 @@ const upsertDoctorProfileValidator = z.object({
   })
 });
 
+/**
+ * Doctor buy subscription plan validator
+ */
+const buySubscriptionPlanValidator = z.object({
+  body: z.object({
+    planId: z.string().min(1, "Plan ID is required")
+  })
+});
+
 module.exports = {
-  upsertDoctorProfileValidator
+  upsertDoctorProfileValidator,
+  buySubscriptionPlanValidator
 };
 
