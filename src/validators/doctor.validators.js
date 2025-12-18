@@ -7,7 +7,8 @@ const upsertDoctorProfileValidator = z.object({
   body: z.object({
     title: z.string().optional(),
     biography: z.string().optional(),
-    specializationId: z.string().min(1, "Specialization ID is required"),
+    specializationId: z.string().min(1).optional(),
+    specialization: z.string().min(1).optional(),
     experienceYears: z.number().int().nonnegative("Experience years must be non-negative").optional(),
     services: z.array(
       z.object({

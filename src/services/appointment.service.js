@@ -20,7 +20,7 @@ const createAppointment = async (data) => {
 
   // Verify doctor and patient exist
   const [doctor, patient] = await Promise.all([
-    User.findById(doctorId),
+    User.findById(doctorId).populate('doctorProfile'),
     User.findById(patientId)
   ]);
 
@@ -30,6 +30,24 @@ const createAppointment = async (data) => {
 
   if (!patient || patient.role !== 'PATIENT') {
     throw new Error('Patient not found');
+  }
+
+  // Check if doctor is approved
+  if (doctor.status !== 'APPROVED') {
+    throw new Error('Doctor account is not approved. Please select an approved doctor.');
+  }
+
+  // Check if doctor has active subscription
+  const hasActiveSubscription = doctor.subscriptionPlan && 
+                                doctor.subscriptionExpiresAt && 
+                                new Date(doctor.subscriptionExpiresAt) > new Date();
+  if (!hasActiveSubscription) {
+    throw new Error('Doctor does not have an active subscription. Please select another doctor.');
+  }
+
+  // Check if doctor profile is completed
+  if (doctor.doctorProfile && !doctor.doctorProfile.profileCompleted) {
+    throw new Error('Doctor profile is incomplete. Please select another doctor.');
   }
 
   // Check for double-booking (same doctor at same date/time)
@@ -72,6 +90,25 @@ const createAppointment = async (data) => {
     paymentStatus: 'UNPAID'
   });
 
+  // Create notifications for doctor and patient
+  const notificationService = require('./notification.service');
+  await Promise.all([
+    notificationService.createNotification({
+      userId: doctorId,
+      title: 'New Appointment Request',
+      body: `${patient.fullName} has requested an appointment on ${new Date(appointmentDate).toLocaleDateString()} at ${appointmentTime}`,
+      type: 'APPOINTMENT',
+      data: { appointmentId: appointment._id }
+    }),
+    notificationService.createNotification({
+      userId: patientId,
+      title: 'Appointment Requested',
+      body: `Your appointment request with Dr. ${doctor.fullName} is pending confirmation`,
+      type: 'APPOINTMENT',
+      data: { appointmentId: appointment._id }
+    })
+  ]);
+
   return appointment;
 };
 
@@ -82,16 +119,18 @@ const createAppointment = async (data) => {
  * @returns {Promise<Object>} Updated appointment
  */
 const updateAppointmentStatus = async (id, statusData) => {
-  const appointment = await Appointment.findById(id);
+  const appointment = await Appointment.findById(id)
+    .populate('doctorId', 'fullName email')
+    .populate('patientId', 'fullName email');
   
   if (!appointment) {
     throw new Error('Appointment not found');
   }
 
-  const { status, paymentStatus, paymentMethod } = statusData;
+  const { status, paymentStatus, paymentMethod, notes } = statusData;
 
   if (status) {
-    const validStatuses = ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'NO_SHOW'];
+    const validStatuses = ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'NO_SHOW', 'REJECTED'];
     if (!validStatuses.includes(status)) {
       throw new Error('Invalid appointment status');
     }
@@ -110,7 +149,166 @@ const updateAppointmentStatus = async (id, statusData) => {
     appointment.paymentMethod = paymentMethod;
   }
 
+  if (notes !== undefined) {
+    appointment.notes = notes;
+  }
+
   await appointment.save();
+
+  // Create notification for patient when doctor accepts/rejects
+  if (status === 'CONFIRMED' || status === 'REJECTED') {
+    const notificationService = require('./notification.service');
+    const statusMessage = status === 'CONFIRMED' 
+      ? `Your appointment with Dr. ${appointment.doctorId.fullName} has been confirmed`
+      : `Your appointment with Dr. ${appointment.doctorId.fullName} has been rejected`;
+    
+    await notificationService.createNotification({
+      userId: appointment.patientId._id.toString(),
+      title: status === 'CONFIRMED' ? 'Appointment Confirmed' : 'Appointment Rejected',
+      body: statusMessage,
+      type: 'APPOINTMENT',
+      data: { appointmentId: appointment._id }
+    });
+  }
+
+  return appointment;
+};
+
+/**
+ * Accept appointment (doctor action)
+ * @param {string} appointmentId - Appointment ID
+ * @param {string} doctorId - Doctor user ID
+ * @returns {Promise<Object>} Updated appointment
+ */
+const acceptAppointment = async (appointmentId, doctorId) => {
+  const appointment = await Appointment.findById(appointmentId);
+  
+  if (!appointment) {
+    throw new Error('Appointment not found');
+  }
+
+  if (appointment.doctorId.toString() !== doctorId) {
+    throw new Error('Unauthorized: This appointment does not belong to you');
+  }
+
+  if (appointment.status !== 'PENDING') {
+    throw new Error(`Cannot accept appointment with status: ${appointment.status}`);
+  }
+
+  appointment.status = 'CONFIRMED';
+  await appointment.save();
+
+  // Create notification
+  const notificationService = require('./notification.service');
+  const User = require('../models/user.model');
+  const doctor = await User.findById(doctorId);
+  const patient = await User.findById(appointment.patientId);
+
+  await notificationService.createNotification({
+    userId: appointment.patientId.toString(),
+    title: 'Appointment Confirmed',
+    body: `Your appointment with Dr. ${doctor.fullName} has been confirmed`,
+    type: 'APPOINTMENT',
+    data: { appointmentId: appointment._id }
+  });
+
+  return appointment;
+};
+
+/**
+ * Reject appointment (doctor action)
+ * @param {string} appointmentId - Appointment ID
+ * @param {string} doctorId - Doctor user ID
+ * @param {string} reason - Optional rejection reason
+ * @returns {Promise<Object>} Updated appointment
+ */
+const rejectAppointment = async (appointmentId, doctorId, reason = null) => {
+  const appointment = await Appointment.findById(appointmentId);
+  
+  if (!appointment) {
+    throw new Error('Appointment not found');
+  }
+
+  if (appointment.doctorId.toString() !== doctorId) {
+    throw new Error('Unauthorized: This appointment does not belong to you');
+  }
+
+  if (appointment.status !== 'PENDING') {
+    throw new Error(`Cannot reject appointment with status: ${appointment.status}`);
+  }
+
+  appointment.status = 'REJECTED';
+  if (reason) {
+    appointment.notes = reason;
+  }
+  await appointment.save();
+
+  // Create notification
+  const notificationService = require('./notification.service');
+  const User = require('../models/user.model');
+  const doctor = await User.findById(doctorId);
+  const patient = await User.findById(appointment.patientId);
+
+  await notificationService.createNotification({
+    userId: appointment.patientId.toString(),
+    title: 'Appointment Rejected',
+    body: `Your appointment with Dr. ${doctor.fullName} has been rejected${reason ? ': ' + reason : ''}`,
+    type: 'APPOINTMENT',
+    data: { appointmentId: appointment._id }
+  });
+
+  return appointment;
+};
+
+/**
+ * Cancel appointment (patient action)
+ * @param {string} appointmentId - Appointment ID
+ * @param {string} patientId - Patient user ID
+ * @param {string} reason - Optional cancellation reason
+ * @returns {Promise<Object>} Updated appointment
+ */
+const cancelAppointment = async (appointmentId, patientId, reason = null) => {
+  const appointment = await Appointment.findById(appointmentId)
+    .populate('doctorId', 'fullName email')
+    .populate('patientId', 'fullName email');
+  
+  if (!appointment) {
+    throw new Error('Appointment not found');
+  }
+
+  if (appointment.patientId._id.toString() !== patientId) {
+    throw new Error('Unauthorized: This appointment does not belong to you');
+  }
+
+  // Check if appointment can be cancelled (not already completed or cancelled)
+  if (['COMPLETED', 'CANCELLED'].includes(appointment.status)) {
+    throw new Error(`Cannot cancel appointment with status: ${appointment.status}`);
+  }
+
+  // Check if appointment time has passed
+  const appointmentDateTime = new Date(appointment.appointmentDate);
+  const [hours, minutes] = appointment.appointmentTime.split(':');
+  appointmentDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+  
+  if (appointmentDateTime < new Date()) {
+    throw new Error('Cannot cancel appointment that has already passed');
+  }
+
+  appointment.status = 'CANCELLED';
+  if (reason) {
+    appointment.notes = reason;
+  }
+  await appointment.save();
+
+  // Create notification for doctor
+  const notificationService = require('./notification.service');
+  await notificationService.createNotification({
+    userId: appointment.doctorId._id.toString(),
+    title: 'Appointment Cancelled',
+    body: `${appointment.patientId.fullName} has cancelled their appointment${reason ? ': ' + reason : ''}`,
+    type: 'APPOINTMENT',
+    data: { appointmentId: appointment._id }
+  });
 
   return appointment;
 };
@@ -200,6 +398,9 @@ module.exports = {
   createAppointment,
   updateAppointmentStatus,
   listAppointments,
-  getAppointment
+  getAppointment,
+  acceptAppointment,
+  rejectAppointment,
+  cancelAppointment
 };
 

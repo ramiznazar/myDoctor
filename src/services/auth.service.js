@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/user.model');
 const DoctorProfile = require('../models/doctorProfile.model');
+const Specialization = require('../models/specialization.model');
 const { generateToken } = require('../utils/jwt');
 
 /**
@@ -17,25 +18,31 @@ const registerUser = async (data) => {
     throw new Error('Email already registered');
   }
 
-  // Hash password
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
+  // Determine default status based on role
+  // Patients are auto-approved, Doctors need admin approval
+  const defaultStatus = role.toUpperCase() === 'PATIENT' ? 'APPROVED' : 'PENDING';
 
-  // Create user
+  // Create user (password will be hashed by pre-save hook in user.model.js)
   const user = await User.create({
     email: email.toLowerCase(),
-    password: hashedPassword,
+    password: password, // Pre-save hook will hash this
     fullName,
     role: role.toUpperCase(),
     phone,
     gender,
     dob: dob ? new Date(dob) : null,
     profileImage,
-    status: 'PENDING'
+    status: defaultStatus
   });
 
   // If user is DOCTOR, create empty DoctorProfile if none exists
   if (role.toUpperCase() === 'DOCTOR' && specializationId) {
+    // Verify specialization exists (doctors can only select from admin-created specializations)
+    const specialization = await Specialization.findById(specializationId);
+    if (!specialization) {
+      throw new Error('Invalid specialization. Please select from available specializations.');
+    }
+
     const doctorProfile = await DoctorProfile.create({
       userId: user._id,
       specialization: specializationId
@@ -82,14 +89,46 @@ const loginUser = async (data) => {
     throw new Error('Account is blocked or rejected');
   }
 
-  // Compare password
+  // Compare password FIRST to verify credentials
   if (!user.password) {
     throw new Error('Invalid email or password');
   }
 
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-  if (!isPasswordValid) {
+  // Try password comparison
+  let isPasswordValid = false;
+  try {
+    isPasswordValid = await bcrypt.compare(password, user.password);
+  } catch (error) {
+    // If comparison fails due to error, password is invalid
     throw new Error('Invalid email or password');
+  }
+  
+  if (!isPasswordValid) {
+    // Password comparison failed
+    // Note: If user was registered before the double-hashing fix,
+    // their password might be double-hashed and needs to be reset
+    throw new Error('Invalid email or password');
+  }
+
+  // After password validation, check if doctor is pending approval
+  if (user.role === 'DOCTOR' && user.status === 'PENDING') {
+    // Still allow login but return a message
+    // Generate JWT token
+    const token = generateToken({
+      userId: user._id.toString(),
+      email: user.email,
+      role: user.role
+    });
+
+    // Return user without password
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    return {
+      user: userObj,
+      token,
+      message: 'Your account is pending admin approval. You can complete your profile and purchase a subscription, but you will not be visible to patients until approved.'
+    };
   }
 
   // Generate JWT token

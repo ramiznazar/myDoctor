@@ -16,10 +16,20 @@ const chatMessageSchema = new mongoose.Schema({
     ref: "User",
     default: null
   },
+  adminId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null
+  },
   senderId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     default: null
+  },
+  appointmentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Appointment",
+    default: null // Optional: only for doctor-patient conversations
   },
   message: {
     type: String,

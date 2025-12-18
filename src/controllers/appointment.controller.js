@@ -37,3 +37,29 @@ exports.getById = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'OK', data: result });
 });
 
+/**
+ * Accept appointment (doctor action)
+ */
+exports.accept = asyncHandler(async (req, res) => {
+  const result = await appointmentService.acceptAppointment(req.params.id, req.userId);
+  res.json({ success: true, message: 'Appointment accepted successfully', data: result });
+});
+
+/**
+ * Reject appointment (doctor action)
+ */
+exports.reject = asyncHandler(async (req, res) => {
+  const { reason } = req.body;
+  const result = await appointmentService.rejectAppointment(req.params.id, req.userId, reason);
+  res.json({ success: true, message: 'Appointment rejected successfully', data: result });
+});
+
+/**
+ * Cancel appointment (patient action)
+ */
+exports.cancel = asyncHandler(async (req, res) => {
+  const { reason } = req.body;
+  const result = await appointmentService.cancelAppointment(req.params.id, req.userId, reason);
+  res.json({ success: true, message: 'Appointment cancelled successfully', data: result });
+});
+

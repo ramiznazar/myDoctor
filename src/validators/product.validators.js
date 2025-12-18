@@ -2,13 +2,12 @@ const { z } = require("zod");
 
 /**
  * Create product validator
+ * sellerId and sellerType are automatically set from authenticated user
  */
 const createProductValidator = z.object({
   body: z.object({
-    sellerId: z.string().min(1, "Seller ID is required"),
-    sellerType: z.enum(["DOCTOR", "PHARMACY"], {
-      errorMap: () => ({ message: "Seller type must be DOCTOR or PHARMACY" })
-    }),
+    sellerId: z.string().min(1).optional(), // Auto-set from req.userId
+    sellerType: z.enum(["DOCTOR", "PHARMACY", "ADMIN"]).optional(), // Auto-set from req.userRole
     name: z.string().min(1, "Product name is required"),
     price: z.number().nonnegative("Price must be non-negative"),
     stock: z.number().int().nonnegative("Stock must be a non-negative integer"),
@@ -25,11 +24,10 @@ const createProductValidator = z.object({
 
 /**
  * Update product validator
+ * sellerId and sellerType cannot be changed (set automatically from authenticated user)
  */
 const updateProductValidator = z.object({
   body: z.object({
-    sellerId: z.string().min(1).optional(),
-    sellerType: z.enum(["DOCTOR", "PHARMACY"]).optional(),
     name: z.string().min(1).optional(),
     price: z.number().nonnegative("Price must be non-negative").optional(),
     stock: z.number().int().nonnegative("Stock must be a non-negative integer").optional(),
@@ -53,7 +51,7 @@ const updateProductValidator = z.object({
 const filterProductsValidator = z.object({
   query: z.object({
     sellerId: z.string().optional(),
-    sellerType: z.enum(["DOCTOR", "PHARMACY"]).optional(),
+    sellerType: z.enum(["DOCTOR", "PHARMACY", "ADMIN"]).optional(),
     category: z.string().optional(),
     subCategory: z.string().optional(),
     isActive: z.string().transform((val) => val === "true").optional(),

@@ -74,6 +74,7 @@ const listTransactions = async (filter = {}) => {
     userId,
     status,
     provider,
+    type,
     fromDate,
     toDate,
     page = 1,
@@ -92,6 +93,18 @@ const listTransactions = async (filter = {}) => {
 
   if (provider) {
     query.provider = provider;
+  }
+
+  // Filter by transaction type
+  if (type) {
+    const typeUpper = type.toUpperCase();
+    if (typeUpper === 'APPOINTMENT') {
+      query.relatedAppointmentId = { $ne: null };
+    } else if (typeUpper === 'SUBSCRIPTION') {
+      query.relatedSubscriptionId = { $ne: null };
+    } else if (typeUpper === 'PRODUCT') {
+      query.relatedProductId = { $ne: null };
+    }
   }
 
   if (fromDate || toDate) {

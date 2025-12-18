@@ -42,3 +42,19 @@ exports.getMySubscriptionPlan = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'OK', data: result });
 });
 
+/**
+ * Get doctor dashboard statistics
+ */
+exports.getDashboard = asyncHandler(async (req, res) => {
+  const result = await doctorService.getDoctorDashboard(req.userId);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+/**
+ * Get doctor's reviews
+ */
+exports.getReviews = asyncHandler(async (req, res) => {
+  const result = await doctorService.getDoctorReviews(req.userId, req.query);
+  res.json({ success: true, message: 'OK', data: result });
+});
+

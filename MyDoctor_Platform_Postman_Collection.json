@@ -1,0 +1,5102 @@
+{
+  "info": {
+    "name": "MyDoctor Platform - Complete API Collection",
+    "description": "Complete API collection for MyDoctor Platform backend with all endpoints organized by Admin, Doctor, and Patient panels",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "mydoctor-platform"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "doctorToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "patientToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Common & Public",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Check if server is running"
+          }
+        },
+        {
+          "name": "Register Doctor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Register a new doctor (status: PENDING)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Dr. John Doe\",\n  \"email\": \"doctor@example.com\",\n  \"password\": \"123456\",\n  \"role\": \"DOCTOR\",\n  \"phone\": \"1234567890\",\n  \"gender\": \"MALE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Register Patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Register a new patient (status: APPROVED)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Jane Smith\",\n  \"email\": \"patient@example.com\",\n  \"password\": \"123456\",\n  \"role\": \"PATIENT\",\n  \"phone\": \"0987654321\",\n  \"gender\": \"FEMALE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login user and get JWT token",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh-token"
+              ]
+            },
+            "description": "Refresh JWT access token",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"YOUR_REFRESH_TOKEN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Specializations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/specialization",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "specialization"
+              ]
+            },
+            "description": "Get all specializations (public)"
+          }
+        },
+        {
+          "name": "List Doctors",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/doctor",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "doctor"
+              ]
+            },
+            "description": "List all approved doctors (public)"
+          }
+        },
+        {
+          "name": "Get Doctor Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/doctor/profile/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "doctor",
+                "profile",
+                ":id"
+              ]
+            },
+            "description": "Get doctor profile by ID (public)"
+          }
+        },
+        {
+          "name": "List Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ]
+            },
+            "description": "List all products (public)"
+          }
+        },
+        {
+          "name": "Get Product by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/products/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                ":id"
+              ]
+            },
+            "description": "Get product details (public)"
+          }
+        },
+        {
+          "name": "List Pharmacies",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/pharmacy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pharmacy"
+              ]
+            },
+            "description": "List all pharmacies (public)"
+          }
+        },
+        {
+          "name": "Get Pharmacy by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/pharmacy/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pharmacy",
+                ":id"
+              ]
+            },
+            "description": "Get pharmacy details (public)"
+          }
+        },
+        {
+          "name": "Get Doctor Reviews",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reviews/doctor/:doctorId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reviews",
+                "doctor",
+                ":doctorId"
+              ]
+            },
+            "description": "Get reviews for a doctor (public)"
+          }
+        },
+        {
+          "name": "Get Doctor Reviews (Query)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reviews?doctorId=:doctorId&page=1&limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reviews?doctorId=:doctorId&page=1&limit=10"
+              ]
+            },
+            "description": "Get reviews for a doctor using query parameter (public)"
+          }
+        },
+        {
+          "name": "List Blog Posts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/blog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "blog"
+              ]
+            },
+            "description": "List all published blog posts (public)"
+          }
+        },
+        {
+          "name": "Get Blog Post by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/blog/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "blog",
+                ":id"
+              ]
+            },
+            "description": "Get blog post details (public)"
+          }
+        },
+        {
+          "name": "Get Available Time Slots",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/availability/slots?doctorId=:doctorId&date=:date",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "availability",
+                "slots?doctorId=:doctorId&date=:date"
+              ]
+            },
+            "description": "Get available time slots for a doctor (public)"
+          }
+        },
+        {
+          "name": "Check Time Slot Availability",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/availability/check?doctorId=:doctorId&date=:date&timeSlot=:timeSlot",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "availability",
+                "check?doctorId=:doctorId&date=:date&timeSlot=:timeSlot"
+              ]
+            },
+            "description": "Check if a time slot is available (public)"
+          }
+        },
+        {
+          "name": "Get Route",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/mapping/route?from[lat]=:lat&from[lng]=:lng&to[lat]=:lat&to[lng]=:lng",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mapping",
+                "route?from[lat]=:lat&from[lng]=:lng&to[lat]=:lat&to[lng]=:lng"
+              ]
+            },
+            "description": "Get route from patient to clinic (public)"
+          }
+        },
+        {
+          "name": "Get Nearby Clinics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/mapping/nearby?lat=:lat&lng=:lng&radius=:radius",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mapping",
+                "nearby?lat=:lat&lng=:lng&radius=:radius"
+              ]
+            },
+            "description": "Get nearby clinics (public)"
+          }
+        },
+        {
+          "name": "Get Clinic Location",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/mapping/clinic/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mapping",
+                "clinic",
+                ":id"
+              ]
+            },
+            "description": "Get clinic location by ID (public)"
+          }
+        },
+        {
+          "name": "Get Active Subscription Plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscription-plan/active",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscription-plan",
+                "active"
+              ]
+            },
+            "description": "Get all active subscription plans (public)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Admin Panel",
+      "item": [
+        {
+          "name": "Dashboard",
+          "item": [
+            {
+              "name": "Get Dashboard Stats",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/dashboard",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "dashboard"
+                  ]
+                },
+                "description": "Get admin dashboard statistics"
+              }
+            }
+          ]
+        },
+        {
+          "name": "User Management",
+          "item": [
+            {
+              "name": "List All Users",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users"
+                  ]
+                },
+                "description": "List all users with filtering"
+              }
+            },
+            {
+              "name": "Get User by ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    ":id"
+                  ]
+                },
+                "description": "Get user details by ID"
+              }
+            },
+            {
+              "name": "Update User Profile",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users/profile",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "profile"
+                  ]
+                },
+                "description": "Update user profile",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Updated Name\",\n  \"phone\": \"1234567890\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update User Status",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users/status/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "status",
+                    ":id"
+                  ]
+                },
+                "description": "Update user status (APPROVED/REJECTED/BLOCKED)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"APPROVED\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete User",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/users/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "users",
+                    ":id"
+                  ]
+                },
+                "description": "Delete user"
+              }
+            },
+            {
+              "name": "Update Admin Profile",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/profile",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "profile"
+                  ]
+                },
+                "description": "Update admin profile",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Admin Name\",\n  \"phone\": \"1234567890\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Doctor Management",
+          "item": [
+            {
+              "name": "List All Doctors",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/doctors",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "doctors"
+                  ]
+                },
+                "description": "List all doctors with filtering"
+              }
+            },
+            {
+              "name": "Get Doctors for Chat",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/doctors/chat?search=:search&status=:status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "doctors",
+                    "chat?search=:search&status=:status"
+                  ]
+                },
+                "description": "Get doctors list with unread message counts for chat"
+              }
+            },
+            {
+              "name": "Approve Doctor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/approve-doctor",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "approve-doctor"
+                  ]
+                },
+                "description": "Approve a pending doctor",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patient Management",
+          "item": [
+            {
+              "name": "List All Patients",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/patients",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "patients"
+                  ]
+                },
+                "description": "List all patients"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Appointment Management",
+          "item": [
+            {
+              "name": "List All Appointments",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/appointments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "appointments"
+                  ]
+                },
+                "description": "List all appointments"
+              }
+            },
+            {
+              "name": "List Appointments by Doctor",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/appointments?doctorId=:doctorId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "appointments?doctorId=:doctorId"
+                  ]
+                },
+                "description": "List appointments filtered by doctor"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subscription Plans",
+          "item": [
+            {
+              "name": "Create Subscription Plan (Admin Route)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/subscription-plan",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "subscription-plan"
+                  ]
+                },
+                "description": "Create a new subscription plan",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"BASIC\",\n  \"price\": 50,\n  \"durationInDays\": 30,\n  \"features\": [\n    \"Basic profile\",\n    \"Limited services\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "List All Subscription Plans (Admin Route)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/subscription-plan",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "subscription-plan"
+                  ]
+                },
+                "description": "List all subscription plans"
+              }
+            },
+            {
+              "name": "Get Subscription Plan by ID (Admin Route)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/subscription-plan/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "subscription-plan",
+                    ":id"
+                  ]
+                },
+                "description": "Get subscription plan details"
+              }
+            },
+            {
+              "name": "Update Subscription Plan (Admin Route)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/subscription-plan/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "subscription-plan",
+                    ":id"
+                  ]
+                },
+                "description": "Update subscription plan",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"BASIC\",\n  \"price\": 60,\n  \"durationInDays\": 30\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Subscription Plan (Admin Route)",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/subscription-plan/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "subscription-plan",
+                    ":id"
+                  ]
+                },
+                "description": "Delete subscription plan"
+              }
+            },
+            {
+              "name": "Create Subscription Plan (Alternative Route)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/subscription",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "subscription"
+                  ]
+                },
+                "description": "Create subscription plan (alternative route)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"BASIC\",\n  \"price\": 50,\n  \"durationInDays\": 30,\n  \"features\": [\n    \"Basic profile\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Subscription Plan (Alternative Route)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/subscription/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "subscription",
+                    ":id"
+                  ]
+                },
+                "description": "Update subscription plan (alternative route)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"BASIC\",\n  \"price\": 60\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Assign Subscription to Doctor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/subscription/assign",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "subscription",
+                    "assign"
+                  ]
+                },
+                "description": "Assign subscription to doctor",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"planId\": \"PLAN_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "List Subscription Plans (Public)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/subscription",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "subscription"
+                  ]
+                },
+                "description": "List all subscription plans (public)"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Specializations",
+          "item": [
+            {
+              "name": "Create Specialization",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/specialization",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "specialization"
+                  ]
+                },
+                "description": "Create a new specialization",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Cardiology\",\n  \"slug\": \"cardiology\",\n  \"description\": \"Heart and cardiovascular system\",\n  \"icon\": \"heart-icon.png\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Specialization",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/specialization/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "specialization",
+                    ":id"
+                  ]
+                },
+                "description": "Update specialization",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Cardiology\",\n  \"description\": \"Updated description\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Specialization",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/specialization/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "specialization",
+                    ":id"
+                  ]
+                },
+                "description": "Delete specialization"
+              }
+            },
+            {
+              "name": "Get All Specializations (Admin)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/specializations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "specializations"
+                  ]
+                },
+                "description": "Get all specializations (admin view)"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Products",
+          "item": [
+            {
+              "name": "List All Products",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/products",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "products"
+                  ]
+                },
+                "description": "List all products (admin view)"
+              }
+            },
+            {
+              "name": "Create Product (Admin)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/products",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "products"
+                  ]
+                },
+                "description": "Create product as admin (website product)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Premium Health Package\",\n  \"description\": \"Comprehensive health checkup\",\n  \"price\": 299.99,\n  \"discountPrice\": 249.99,\n  \"stock\": 50,\n  \"category\": \"Health Packages\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Product (Admin)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/products/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "products",
+                    ":id"
+                  ]
+                },
+                "description": "Update any product (admin can update any product)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"price\": 279.99,\n  \"stock\": 75\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Product (Admin)",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/products/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "products",
+                    ":id"
+                  ]
+                },
+                "description": "Delete any product (admin can delete any product)"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pharmacies",
+          "item": [
+            {
+              "name": "List All Pharmacies",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/pharmacies",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "pharmacies"
+                  ]
+                },
+                "description": "List all pharmacies (admin view)"
+              }
+            },
+            {
+              "name": "Create Pharmacy",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/pharmacy",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "pharmacy"
+                  ]
+                },
+                "description": "Create a new pharmacy",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"City Pharmacy\",\n  \"address\": {\n    \"line1\": \"456 Pharmacy Street\",\n    \"city\": \"New York\",\n    \"state\": \"NY\",\n    \"country\": \"USA\",\n    \"zip\": \"10001\"\n  },\n  \"phone\": \"1234567890\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Pharmacy",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/pharmacy/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "pharmacy",
+                    ":id"
+                  ]
+                },
+                "description": "Update pharmacy",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Updated Pharmacy Name\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Pharmacy",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/pharmacy/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "pharmacy",
+                    ":id"
+                  ]
+                },
+                "description": "Delete pharmacy"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reviews",
+          "item": [
+            {
+              "name": "List All Reviews",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "reviews"
+                  ]
+                },
+                "description": "List all reviews (admin view)"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Transactions",
+          "item": [
+            {
+              "name": "List All Transactions",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/transactions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "transactions"
+                  ]
+                },
+                "description": "List all payment transactions"
+              }
+            },
+            {
+              "name": "List Transactions (Transaction Route)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/transaction",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "transaction"
+                  ]
+                },
+                "description": "List all transactions with filtering"
+              }
+            },
+            {
+              "name": "Get Transaction by ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/transaction/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    ":id"
+                  ]
+                },
+                "description": "Get transaction details"
+              }
+            },
+            {
+              "name": "Update Transaction Status",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/transaction/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    ":id"
+                  ]
+                },
+                "description": "Update transaction status",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"SUCCESS\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Create Transaction",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/transaction",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "transaction"
+                  ]
+                },
+                "description": "Create a transaction",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"userId\": \"USER_ID_HERE\",\n  \"amount\": 100,\n  \"type\": \"APPOINTMENT\",\n  \"status\": \"PENDING\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Refund Transaction",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/payment/refund/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "payment",
+                    "refund",
+                    ":id"
+                  ]
+                },
+                "description": "Refund a transaction"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "Send Notification",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/notification",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "notification"
+                  ]
+                },
+                "description": "Send notification to a user",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"userId\": \"USER_ID_HERE\",\n  \"title\": \"Notification Title\",\n  \"body\": \"Notification message\",\n  \"type\": \"SYSTEM\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Announcements",
+          "item": [
+            {
+              "name": "Create Broadcast Announcement",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements"
+                  ]
+                },
+                "description": "Create broadcast announcement (all doctors)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Platform Maintenance\",\n  \"message\": \"System will be down on Jan 15\",\n  \"announcementType\": \"BROADCAST\",\n  \"priority\": \"IMPORTANT\",\n  \"isPinned\": true,\n  \"expiryType\": \"EXPIRE_AFTER_DATE\",\n  \"expiryDate\": \"2024-01-20T00:00:00.000Z\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Create Targeted Announcement",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements"
+                  ]
+                },
+                "description": "Create targeted announcement",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"New Guidelines\",\n  \"message\": \"Please review new guidelines\",\n  \"announcementType\": \"TARGETED\",\n  \"priority\": \"URGENT\",\n  \"targetCriteria\": {\n    \"specializationIds\": [\n      \"SPEC_ID_HERE\"\n    ]\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "List All Announcements",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements"
+                  ]
+                },
+                "description": "List all announcements"
+              }
+            },
+            {
+              "name": "Get Announcement by ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements",
+                    ":id"
+                  ]
+                },
+                "description": "Get announcement details"
+              }
+            },
+            {
+              "name": "Update Announcement",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements",
+                    ":id"
+                  ]
+                },
+                "description": "Update announcement",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Updated Title\",\n  \"priority\": \"URGENT\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Announcement",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements",
+                    ":id"
+                  ]
+                },
+                "description": "Delete announcement"
+              }
+            },
+            {
+              "name": "Get Announcement Read Status",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements/:id/read-status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements",
+                    ":id",
+                    "read-status"
+                  ]
+                },
+                "description": "Get who has read the announcement"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat",
+          "item": [
+            {
+              "name": "Get All Conversations",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/conversations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "conversations"
+                  ]
+                },
+                "description": "Get all admin-doctor conversations"
+              }
+            },
+            {
+              "name": "Get Unread Message Count",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/unread-count",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "unread-count"
+                  ]
+                },
+                "description": "Get unread message count"
+              }
+            },
+            {
+              "name": "Start Conversation with Doctor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/conversation",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "conversation"
+                  ]
+                },
+                "description": "Start conversation with doctor",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"adminId\": \"ADMIN_ID_HERE\",\n  \"doctorId\": \"DOCTOR_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Send Message to Doctor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/send",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "send"
+                  ]
+                },
+                "description": "Send message to doctor",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"adminId\": \"ADMIN_ID_HERE\",\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"message\": \"Hello Doctor\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Messages",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/messages/:conversationId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "messages",
+                    ":conversationId"
+                  ]
+                },
+                "description": "Get messages for conversation"
+              }
+            },
+            {
+              "name": "Mark Messages as Read",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/conversations/:conversationId/read",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "conversations",
+                    ":conversationId",
+                    "read"
+                  ]
+                },
+                "description": "Mark messages as read"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Blog",
+          "item": [
+            {
+              "name": "Create Blog Post",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/blog",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "blog"
+                  ]
+                },
+                "description": "Create blog post",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Blog Title\",\n  \"content\": \"Blog content here\",\n  \"isPublished\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Blog Post",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/blog/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "blog",
+                    ":id"
+                  ]
+                },
+                "description": "Update blog post",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Updated Title\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Blog Post",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/blog/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "blog",
+                    ":id"
+                  ]
+                },
+                "description": "Delete blog post"
+              }
+            }
+          ]
+        },
+        {
+          "name": "System Activity",
+          "item": [
+            {
+              "name": "Get System Activity",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/admin/activity",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "admin",
+                    "activity"
+                  ]
+                },
+                "description": "Get system activity logs"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Doctor Panel",
+      "item": [
+        {
+          "name": "Profile Management",
+          "item": [
+            {
+              "name": "Update Profile",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/doctor/profile",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "doctor",
+                    "profile"
+                  ]
+                },
+                "description": "Create or update doctor profile",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Senior Cardiologist\",\n  \"biography\": \"Experienced doctor\",\n  \"specializationId\": \"SPEC_ID_HERE\",\n  \"experienceYears\": 15\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get My Profile",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/doctor/profile/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "doctor",
+                    "profile",
+                    ":id"
+                  ]
+                },
+                "description": "Get own profile"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dashboard",
+          "item": [
+            {
+              "name": "Get Dashboard",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/doctor/dashboard",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "doctor",
+                    "dashboard"
+                  ]
+                },
+                "description": "Get doctor dashboard statistics"
+              }
+            },
+            {
+              "name": "Get My Reviews",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/doctor/reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "doctor",
+                    "reviews"
+                  ]
+                },
+                "description": "Get doctor's reviews"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Subscriptions",
+          "item": [
+            {
+              "name": "Buy Subscription Plan",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/doctor/buy-subscription",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "doctor",
+                    "buy-subscription"
+                  ]
+                },
+                "description": "Purchase a subscription plan",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"planId\": \"PLAN_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get My Subscription",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/doctor/my-subscription",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "doctor",
+                    "my-subscription"
+                  ]
+                },
+                "description": "Get current subscription plan"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Availability",
+          "item": [
+            {
+              "name": "Set Availability",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/availability",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "availability"
+                  ]
+                },
+                "description": "Set doctor availability",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"date\": \"2024-02-15\",\n  \"timeSlots\": [\n    {\n      \"startTime\": \"09:00\",\n      \"endTime\": \"10:00\",\n      \"isAvailable\": true\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Availability",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/availability?fromDate=:fromDate&toDate=:toDate",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "availability?fromDate=:fromDate&toDate=:toDate"
+                  ]
+                },
+                "description": "Get doctor availability"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Weekly Schedule",
+          "item": [
+            {
+              "name": "Create/Update Weekly Schedule",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/weekly-schedule",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "weekly-schedule"
+                  ]
+                },
+                "description": "Create or update weekly schedule",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"dayOfWeek\": \"Monday\",\n  \"timeSlots\": [\n    {\n      \"startTime\": \"09:00\",\n      \"endTime\": \"17:00\",\n      \"isAvailable\": true\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Weekly Schedule",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/weekly-schedule",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "weekly-schedule"
+                  ]
+                },
+                "description": "Get weekly schedule"
+              }
+            },
+            {
+              "name": "Update Appointment Duration",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/weekly-schedule/duration",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "weekly-schedule",
+                    "duration"
+                  ]
+                },
+                "description": "Update appointment duration",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"duration\": 30\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Add Time Slot to Day",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/weekly-schedule/day/:dayOfWeek/slot",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "weekly-schedule",
+                    "day",
+                    ":dayOfWeek",
+                    "slot"
+                  ]
+                },
+                "description": "Add time slot to a specific day",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"startTime\": \"10:00\",\n  \"endTime\": \"11:00\",\n  \"isAvailable\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Time Slot",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/weekly-schedule/day/:dayOfWeek/slot/:slotId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "weekly-schedule",
+                    "day",
+                    ":dayOfWeek",
+                    "slot",
+                    ":slotId"
+                  ]
+                },
+                "description": "Update time slot",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"startTime\": \"10:00\",\n  \"endTime\": \"11:00\",\n  \"isAvailable\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Time Slot",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/weekly-schedule/day/:dayOfWeek/slot/:slotId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "weekly-schedule",
+                    "day",
+                    ":dayOfWeek",
+                    "slot",
+                    ":slotId"
+                  ]
+                },
+                "description": "Delete time slot"
+              }
+            },
+            {
+              "name": "Get Available Slots for Date",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/weekly-schedule/slots?doctorId=:doctorId&date=:date",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "weekly-schedule",
+                    "slots?doctorId=:doctorId&date=:date"
+                  ]
+                },
+                "description": "Get available slots for a date (public)"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Appointments",
+          "item": [
+            {
+              "name": "List My Appointments",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment?doctorId=:doctorId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment?doctorId=:doctorId"
+                  ]
+                },
+                "description": "List doctor's appointments"
+              }
+            },
+            {
+              "name": "Get Appointment by ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment",
+                    ":id"
+                  ]
+                },
+                "description": "Get appointment details"
+              }
+            },
+            {
+              "name": "Accept Appointment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment/:id/accept",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment",
+                    ":id",
+                    "accept"
+                  ]
+                },
+                "description": "Accept appointment request"
+              }
+            },
+            {
+              "name": "Reject Appointment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment/:id/reject",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment",
+                    ":id",
+                    "reject"
+                  ]
+                },
+                "description": "Reject appointment request",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Time slot not available\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Appointment Status",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment/:id/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment",
+                    ":id",
+                    "status"
+                  ]
+                },
+                "description": "Update appointment status",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"COMPLETED\",\n  \"notes\": \"Consultation completed\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Products",
+          "item": [
+            {
+              "name": "Create Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/products",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "products"
+                  ]
+                },
+                "description": "Create product (requires FULL subscription)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Vitamin D Supplements\",\n  \"description\": \"High quality supplements\",\n  \"price\": 25.99,\n  \"discountPrice\": 19.99,\n  \"stock\": 100,\n  \"category\": \"Supplements\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/products/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "products",
+                    ":id"
+                  ]
+                },
+                "description": "Update own product",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"price\": 29.99,\n  \"stock\": 150\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Product",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/products/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "products",
+                    ":id"
+                  ]
+                },
+                "description": "Delete own product"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat",
+          "item": [
+            {
+              "name": "Get All Conversations",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/conversations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "conversations"
+                  ]
+                },
+                "description": "Get all conversations (admin-doctor + doctor-patient)"
+              }
+            },
+            {
+              "name": "Get Unread Message Count",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/unread-count",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "unread-count"
+                  ]
+                },
+                "description": "Get unread message count"
+              }
+            },
+            {
+              "name": "Start Conversation with Admin",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/conversation",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "conversation"
+                  ]
+                },
+                "description": "Start conversation with admin",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"adminId\": \"ADMIN_ID_HERE\",\n  \"doctorId\": \"DOCTOR_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Send Message to Admin",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/send",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "send"
+                  ]
+                },
+                "description": "Send message to admin",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"adminId\": \"ADMIN_ID_HERE\",\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"message\": \"Hello Admin\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Start Conversation with Patient",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/conversation",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "conversation"
+                  ]
+                },
+                "description": "Start conversation with patient (requires CONFIRMED appointment)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"patientId\": \"PATIENT_ID_HERE\",\n  \"appointmentId\": \"APPOINTMENT_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Send Message to Patient",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/send",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "send"
+                  ]
+                },
+                "description": "Send message to patient",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"patientId\": \"PATIENT_ID_HERE\",\n  \"appointmentId\": \"APPOINTMENT_ID_HERE\",\n  \"message\": \"Hello Patient\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Messages",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/messages/:conversationId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "messages",
+                    ":conversationId"
+                  ]
+                },
+                "description": "Get messages for conversation"
+              }
+            },
+            {
+              "name": "Mark Messages as Read",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/conversations/:conversationId/read",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "conversations",
+                    ":conversationId",
+                    "read"
+                  ]
+                },
+                "description": "Mark messages as read"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Video Sessions",
+          "item": [
+            {
+              "name": "Start Video Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/video/start",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "video",
+                    "start"
+                  ]
+                },
+                "description": "Start video session (requires CONFIRMED ONLINE appointment)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"appointmentId\": \"APPOINTMENT_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "End Video Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/video/end",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "video",
+                    "end"
+                  ]
+                },
+                "description": "End video session",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"sessionId\": \"SESSION_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Session by Appointment",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/video/by-appointment/:appointmentId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "video",
+                    "by-appointment",
+                    ":appointmentId"
+                  ]
+                },
+                "description": "Get video session by appointment ID"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Announcements",
+          "item": [
+            {
+              "name": "Get My Announcements",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements/doctor",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements",
+                    "doctor"
+                  ]
+                },
+                "description": "Get announcements for doctor"
+              }
+            },
+            {
+              "name": "Get Unread Announcement Count",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements/unread-count",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements",
+                    "unread-count"
+                  ]
+                },
+                "description": "Get unread announcement count"
+              }
+            },
+            {
+              "name": "Get Announcement by ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements",
+                    ":id"
+                  ]
+                },
+                "description": "Get announcement details"
+              }
+            },
+            {
+              "name": "Mark Announcement as Read",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/announcements/:id/read",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "announcements",
+                    ":id",
+                    "read"
+                  ]
+                },
+                "description": "Mark announcement as read"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Blog",
+          "item": [
+            {
+              "name": "Create Blog Post",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/blog",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "blog"
+                  ]
+                },
+                "description": "Create blog post",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Health Tips\",\n  \"content\": \"Blog content\",\n  \"isPublished\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Blog Post",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/blog/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "blog",
+                    ":id"
+                  ]
+                },
+                "description": "Update own blog post",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Updated Title\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Blog Post",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/blog/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "blog",
+                    ":id"
+                  ]
+                },
+                "description": "Delete own blog post"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "Get My Notifications",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/notification/:userId?isRead=false&page=1&limit=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "notification",
+                    ":userId?isRead=false&page=1&limit=20"
+                  ]
+                },
+                "description": "Get doctor's notifications (replace :userId with actual user ID)"
+              }
+            },
+            {
+              "name": "Mark Notification as Read",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/notification/read/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "notification",
+                    "read",
+                    ":id"
+                  ]
+                },
+                "description": "Mark notification as read"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Account",
+          "item": [
+            {
+              "name": "Change Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{doctorToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/change-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "change-password"
+                  ]
+                },
+                "description": "Change password",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"oldPassword\": \"123456\",\n  \"newPassword\": \"newpassword123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Patient Panel",
+      "item": [
+        {
+          "name": "Dashboard",
+          "item": [
+            {
+              "name": "Get Dashboard",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/patient/dashboard",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "patient",
+                    "dashboard"
+                  ]
+                },
+                "description": "Get patient dashboard statistics"
+              }
+            },
+            {
+              "name": "Get Appointment History",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/patient/appointments/history",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "patient",
+                    "appointments",
+                    "history"
+                  ]
+                },
+                "description": "Get appointment history"
+              }
+            },
+            {
+              "name": "Get Payment History",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/patient/payments/history",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "patient",
+                    "payments",
+                    "history"
+                  ]
+                },
+                "description": "Get payment history"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Profile",
+          "item": [
+            {
+              "name": "Update Profile",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users/profile",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    "profile"
+                  ]
+                },
+                "description": "Update patient profile",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Updated Name\",\n  \"phone\": \"1234567890\",\n  \"gender\": \"FEMALE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get User by ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/users/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "users",
+                    ":id"
+                  ]
+                },
+                "description": "Get user details"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Appointments",
+          "item": [
+            {
+              "name": "Create Appointment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment"
+                  ]
+                },
+                "description": "Create appointment request",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"patientId\": \"PATIENT_ID_HERE\",\n  \"appointmentDate\": \"2024-02-15\",\n  \"appointmentTime\": \"10:00\",\n  \"bookingType\": \"VISIT\",\n  \"patientNotes\": \"Regular checkup\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "List My Appointments",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment?patientId=:patientId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment?patientId=:patientId"
+                  ]
+                },
+                "description": "List patient's appointments"
+              }
+            },
+            {
+              "name": "Get Appointment by ID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment",
+                    ":id"
+                  ]
+                },
+                "description": "Get appointment details"
+              }
+            },
+            {
+              "name": "Cancel Appointment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/appointment/:id/cancel",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "appointment",
+                    ":id",
+                    "cancel"
+                  ]
+                },
+                "description": "Cancel appointment",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Unable to attend\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Medical Records",
+          "item": [
+            {
+              "name": "Create Medical Record",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/patient/medical-records",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "patient",
+                    "medical-records"
+                  ]
+                },
+                "description": "Create medical record",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Blood Test Report\",\n  \"description\": \"Complete blood count\",\n  \"recordType\": \"LAB_REPORT\",\n  \"fileUrl\": \"https://example.com/report.pdf\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Medical Records",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/patient/medical-records",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "patient",
+                    "medical-records"
+                  ]
+                },
+                "description": "Get patient's medical records"
+              }
+            },
+            {
+              "name": "Delete Medical Record",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/patient/medical-records/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "patient",
+                    "medical-records",
+                    ":id"
+                  ]
+                },
+                "description": "Delete medical record"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payments",
+          "item": [
+            {
+              "name": "Process Appointment Payment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/payment/appointment",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "payment",
+                    "appointment"
+                  ]
+                },
+                "description": "Process appointment payment",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"appointmentId\": \"APPOINTMENT_ID_HERE\",\n  \"amount\": 500,\n  \"paymentMethod\": \"DUMMY\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Process Product Payment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/payment/product",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "payment",
+                    "product"
+                  ]
+                },
+                "description": "Process product payment",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"PRODUCT_ID_HERE\",\n  \"amount\": 50,\n  \"paymentMethod\": \"DUMMY\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get My Transactions",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/payment/transactions",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "payment",
+                    "transactions"
+                  ]
+                },
+                "description": "Get patient's transactions"
+              }
+            },
+            {
+              "name": "Get Transaction by ID (Payment Route)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/payment/transaction/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "payment",
+                    "transaction",
+                    ":id"
+                  ]
+                },
+                "description": "Get transaction details"
+              }
+            },
+            {
+              "name": "Get Transaction by ID (Transaction Route)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/transaction/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    ":id"
+                  ]
+                },
+                "description": "Get transaction details (alternative route)"
+              }
+            },
+            {
+              "name": "Create Transaction",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/transaction",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "transaction"
+                  ]
+                },
+                "description": "Create a transaction",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"amount\": 100,\n  \"type\": \"APPOINTMENT\",\n  \"status\": \"PENDING\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reviews",
+          "item": [
+            {
+              "name": "Create Review",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/reviews",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "reviews"
+                  ]
+                },
+                "description": "Create review for doctor (after completed appointment)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"rating\": 5,\n  \"reviewText\": \"Excellent doctor\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Delete Review",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/reviews/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "reviews",
+                    ":id"
+                  ]
+                },
+                "description": "Delete own review"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Favorites",
+          "item": [
+            {
+              "name": "Add Favorite Doctor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/favorite",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "favorite"
+                  ]
+                },
+                "description": "Add doctor to favorites",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Favorite Doctors",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/favorite/:patientId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "favorite",
+                    ":patientId"
+                  ]
+                },
+                "description": "Get favorite doctors (replace :patientId with actual patient ID)"
+              }
+            },
+            {
+              "name": "Remove Favorite",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/favorite/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "favorite",
+                    ":id"
+                  ]
+                },
+                "description": "Remove favorite doctor (replace :id with favorite record ID)"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chat",
+          "item": [
+            {
+              "name": "Start Conversation with Doctor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/conversation",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "conversation"
+                  ]
+                },
+                "description": "Start conversation (requires CONFIRMED appointment)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"patientId\": \"PATIENT_ID_HERE\",\n  \"appointmentId\": \"APPOINTMENT_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Send Message to Doctor",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/send",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "send"
+                  ]
+                },
+                "description": "Send message (requires CONFIRMED appointment)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"DOCTOR_ID_HERE\",\n  \"patientId\": \"PATIENT_ID_HERE\",\n  \"appointmentId\": \"APPOINTMENT_ID_HERE\",\n  \"message\": \"Hello Doctor\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Messages",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/chat/messages/:conversationId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "chat",
+                    "messages",
+                    ":conversationId"
+                  ]
+                },
+                "description": "Get messages for conversation"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Video Sessions",
+          "item": [
+            {
+              "name": "Start Video Session",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/video/start",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "video",
+                    "start"
+                  ]
+                },
+                "description": "Start video session (requires CONFIRMED ONLINE appointment)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"appointmentId\": \"APPOINTMENT_ID_HERE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Session by Appointment",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/video/by-appointment/:appointmentId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "video",
+                    "by-appointment",
+                    ":appointmentId"
+                  ]
+                },
+                "description": "Get video session by appointment ID"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "item": [
+            {
+              "name": "Get My Notifications",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/notification/:userId?isRead=false&page=1&limit=20",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "notification",
+                    ":userId?isRead=false&page=1&limit=20"
+                  ]
+                },
+                "description": "Get patient's notifications (replace :userId with actual user ID)"
+              }
+            },
+            {
+              "name": "Mark Notification as Read",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/notification/read/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "notification",
+                    "read",
+                    ":id"
+                  ]
+                },
+                "description": "Mark notification as read"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Account",
+          "item": [
+            {
+              "name": "Change Password",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{patientToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/auth/change-password",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "change-password"
+                  ]
+                },
+                "description": "Change password",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"oldPassword\": \"123456\",\n  \"newPassword\": \"newpassword123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. File Uploads",
+      "item": [
+        {
+          "name": "Upload Profile Image",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/upload/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "profile"
+              ]
+            },
+            "description": "Upload profile image (multipart/form-data)"
+          }
+        },
+        {
+          "name": "Upload Doctor Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/upload/doctor-docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "doctor-docs"
+              ]
+            },
+            "description": "Upload doctor documents"
+          }
+        },
+        {
+          "name": "Upload Clinic Images",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/upload/clinic",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "clinic"
+              ]
+            },
+            "description": "Upload clinic images"
+          }
+        },
+        {
+          "name": "Upload Product Images",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/upload/product",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "product"
+              ]
+            },
+            "description": "Upload product images"
+          }
+        },
+        {
+          "name": "Upload Blog Cover",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{doctorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/upload/blog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "blog"
+              ]
+            },
+            "description": "Upload blog cover image"
+          }
+        },
+        {
+          "name": "Upload General Image",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patientToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/upload/general",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "general"
+              ]
+            },
+            "description": "Upload general image"
+          }
+        }
+      ]
+    }
+  ]
+}

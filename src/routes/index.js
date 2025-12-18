@@ -29,5 +29,10 @@ router.use('/blog', require('./blog.routes'));
 router.use('/notification', require('./notification.routes'));
 router.use('/transaction', require('./transaction.routes'));
 router.use('/upload', require('./upload.routes'));
+router.use('/availability', require('./availability.routes'));
+router.use('/payment', require('./payment.routes'));
+router.use('/mapping', require('./mapping.routes'));
+router.use('/patient', require('./patient.routes'));
+router.use('/announcements', require('./announcement.routes'));
 
 module.exports = router;

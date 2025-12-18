@@ -4,6 +4,7 @@ const videoSessionController = require('../controllers/videoSession.controller')
 const validate = require('../middleware/validate');
 const authGuard = require('../middleware/authGuard');
 const asyncHandler = require('../middleware/asyncHandler');
+const { requireAppointmentAccess, requireConfirmedAppointment } = require('../middleware/appointmentAccess');
 const { z } = require('zod');
 
 // Validators for video session
@@ -21,13 +22,14 @@ const endSessionValidator = z.object({
 
 /**
  * @route   POST /api/video/start
- * @desc    Start video session
- * @access  Private (Doctor)
+ * @desc    Start video session (requires confirmed appointment and appointment time must have started)
+ * @access  Private (Doctor or Patient)
  */
 router.post(
   '/start',
-  authGuard(['DOCTOR']),
+  authGuard(['DOCTOR', 'PATIENT']),
   validate(startSessionValidator),
+  requireAppointmentAccess,
   asyncHandler(videoSessionController.startSession)
 );
 
@@ -45,12 +47,13 @@ router.post(
 
 /**
  * @route   GET /api/video/by-appointment/:appointmentId
- * @desc    Get session by appointment ID
+ * @desc    Get session by appointment ID (requires confirmed appointment)
  * @access  Private
  */
 router.get(
   '/by-appointment/:appointmentId',
   authGuard([]),
+  requireConfirmedAppointment,
   asyncHandler(videoSessionController.getByAppointment)
 );
 

@@ -23,9 +23,35 @@ exports.getMessages = asyncHandler(async (req, res) => {
 
 /**
  * Get or create conversation
+ * Supports both doctor-patient (with appointment) and admin-doctor (without appointment) conversations
  */
 exports.getOrCreateConversation = asyncHandler(async (req, res) => {
-  const result = await chatService.getOrCreateConversation(req.body.doctorId, req.body.patientId);
+  const { doctorId, patientId, adminId, appointmentId } = req.body;
+  const result = await chatService.getOrCreateConversation(doctorId, patientId, adminId, appointmentId);
   res.json({ success: true, message: 'OK', data: result });
+});
+
+/**
+ * Get conversations for current user (admin or doctor)
+ */
+exports.getConversations = asyncHandler(async (req, res) => {
+  const result = await chatService.getConversations(req.userId, req.userRole, req.query);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+/**
+ * Mark messages as read in a conversation
+ */
+exports.markMessagesAsRead = asyncHandler(async (req, res) => {
+  const result = await chatService.markMessagesAsRead(req.params.conversationId, req.userId);
+  res.json({ success: true, message: 'Messages marked as read', data: result });
+});
+
+/**
+ * Get unread message count for current user
+ */
+exports.getUnreadCount = asyncHandler(async (req, res) => {
+  const result = await chatService.getUnreadCount(req.userId, req.userRole);
+  res.json({ success: true, message: 'OK', data: { unreadCount: result } });
 });
 

@@ -1,24 +1,71 @@
 ### ============================================
-### COMPLETE TESTING FLOW - STEP BY STEP
+### MYDOCTOR PLATFORM - COMPLETE TESTING SUITE
 ### ============================================
 ### 
 ### INSTRUCTIONS:
-### 1. Uncomment each step (#) one by one
-### 2. Replace YOUR_TOKEN with actual tokens from responses
-### 3. Replace IDs with actual IDs from responses
-### 4. Run each step in sequence
+### 1. Replace tokens with actual tokens from responses
+### 2. Replace IDs with actual IDs from responses
+### 3. Run tests in sequence for complete flow
+### 4. Server should be running on http://localhost:5000
+### 5. All payment methods use "DUMMY" (default if not provided)
+###
+### ============================================
+### COMMUNICATION APIs QUICK REFERENCE
+### ============================================
+### 
+### CHAT APIs (REST API - No Sockets Required):
+###   DOCTOR-PATIENT:
+###   POST /api/chat/conversation - Start conversation (requires appointmentId, CONFIRMED status, time started)
+###   POST /api/chat/send - Send message (requires appointmentId, CONFIRMED status, time started)
+###   
+###   ADMIN-DOCTOR:
+###   POST /api/chat/conversation - Start conversation (requires adminId + doctorId, no appointment needed)
+###   POST /api/chat/send - Send message (requires adminId + doctorId, no appointment needed)
+###   GET  /api/chat/conversations - Get all conversations (Admin/Doctor)
+###   GET  /api/chat/unread-count - Get unread message count (Admin/Doctor)
+###   PUT  /api/chat/conversations/:conversationId/read - Mark messages as read
+###   GET  /api/chat/messages/:conversationId - Get messages (works for both types)
+###   GET  /admin/doctors/chat - Admin: Get doctors list with unread counts for chat
+###
+### VIDEO/AUDIO APIs:
+###   POST /api/video/start - Start video session (requires appointmentId, CONFIRMED status, time started, ONLINE type)
+###   POST /api/video/end - End video session
+###   GET  /api/video/by-appointment/:appointmentId - Get session by appointment
+###
+### COMMUNICATION RULES:
+###   DOCTOR-PATIENT CHAT:
+###   1. Doctor must ACCEPT appointment (status: CONFIRMED) before communication
+###   2. Communication ONLY available at scheduled appointment date/time
+###   3. All communication DISABLED for PENDING/REJECTED appointments
+###   4. Chat works through REST API (no sockets)
+###   5. Video/Audio only for ONLINE booking type
+###
+###   ADMIN-DOCTOR CHAT:
+###   1. No appointment required
+###   2. Available anytime (no time restrictions)
+###   3. Both admin and doctor can initiate conversation
+###   4. Chat works through REST API (no sockets)
 ###
 ### ============================================
 
-### ============================================
-### STEP 1: CREATE ADMIN USER (First time only)
-### ============================================
-### Note: If admin already exists, skip to STEP 2
-### You need to manually create admin in database or use registration
-### For now, we'll assume admin exists and login
+@baseUrl = http://localhost:5000/api
+@adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTMwNTkwOCwiZXhwIjoxNzY1OTEwNzA4fQ.Pfio13kEzzs9fCSD6sK7oDKOGVTF_V7gd_ZdY2sVhYM
+@doctorToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM5ZDM4MmYwOTAyMTljNDA0NWM1Y2QiLCJlbWFpbCI6ImRvY3RvcjJAZ21haWwuY29tIiwicm9sZSI6IkRPQ1RPUiIsImlhdCI6MTc2NTM5NzM3OCwiZXhwIjoxNzY2MDAyMTc4fQ.qg7vlKdqeUpszWj5GfMEcsxUqQApe2GFUInjwildOyI
+@patientToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM5ZDNhOGYwOTAyMTljNDA0NWM1ZDAiLCJlbWFpbCI6InBhdGllbnRAZ21haWwuY29tIiwicm9sZSI6IlBBVElFTlQiLCJpYXQiOjE3NjUzOTc0MTcsImV4cCI6MTc2NjAwMjIxN30.LvrL7fBje6ZLhThv6WONUOe4FeC2eWC6CBV9Dj_71aM
 
-### STEP 1a: Admin Login
-POST http://localhost:5000/api/auth/login
+### ============================================
+### STEP 0: HEALTH CHECK
+### ============================================
+
+### 0.1 Health Check
+GET {{baseUrl}}/health
+
+### ============================================
+### STEP 1: AUTHENTICATION & REGISTRATION
+### ============================================
+
+### 1.1 Admin Login
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
@@ -26,36 +73,9 @@ Content-Type: application/json
     "password": "123456"
 }
 
-### Copy the token from response above and use it in STEP 2
-### Example: "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-
-###
-### ============================================
-### STEP 2: ADMIN CREATES SUBSCRIPTION PLAN
-### ============================================
-### Replace YOUR_ADMIN_TOKEN with token from STEP 1
-
-POST http://localhost:5000/api/admin/subscription-plan
-Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTEwMDQ3NCwiZXhwIjoxNzY1NzA1Mjc0fQ._1-hZ6J8sweATuvfXMRHKhuv7UG48GPx2ixLFz-9HRM
-
-{
-    "name": "BASIC",
-    "price": 100,
-    "durationInDays": 30,
-    "features": ["Feature 1", "Feature 2", "Feature 3"]
-}
-
-### Copy the plan ID (_id) from response above
-### Example: "_id": "69351801e43ca55642f854e2"
-
-###
-### ============================================
-### STEP 3: DOCTOR REGISTERS
-### ============================================
-### This creates a new doctor account
-
-POST http://localhost:5000/api/auth/register
+### 1.2 Doctor Registration
+### Note: Doctors are PENDING (status: PENDING) and need admin approval
+POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
 {
@@ -67,152 +87,1465 @@ Content-Type: application/json
     "gender": "MALE"
 }
 
-### Copy the doctor token and doctor ID from response
-### Example: "userId": "69351801e43ca55642f854e2"
-
-###
-### ============================================
-### STEP 4: DOCTOR VIEWS AVAILABLE PLANS (Optional)
-### ============================================
-### Doctor can see what plans are available before buying
-
-GET http://localhost:5000/api/admin/subscription-plan/active
-
-### Copy the plan ID you want to buy from the response
-
-###
-### ============================================
-### STEP 5: DOCTOR BUYS SUBSCRIPTION PLAN
-### ============================================
-### Replace YOUR_DOCTOR_TOKEN with token from STEP 3
-### Replace PLAN_ID_HERE with plan ID from STEP 2 or STEP 4
-
-POST http://localhost:5000/api/doctor/buy-subscription
+### 1.3 Patient Registration
+### Note: Patients are automatically APPROVED (status: APPROVED) upon registration
+POST {{baseUrl}}/auth/register
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1NGM2MTczMTFmZjk1YzNlY2ZiN2IiLCJlbWFpbCI6ImRvY3RvckBnbWFpbC5jb20iLCJyb2xlIjoiRE9DVE9SIiwiaWF0IjoxNzY1MTAwNjQxLCJleHAiOjE3NjU3MDU0NDF9.82Wk6cHGBB8uCVnBUkzZwR18umgp1-JHj4wm7r22IdA
 
 {
-    "planId": "69354bf37311ff95c3ecfb78"
+    "fullName": "Jane Smith",
+    "email": "patient@gmail.com",
+    "password": "123456",
+    "role": "PATIENT",
+    "phone": "0987654321",
+    "gender": "FEMALE"
 }
 
-###
-### ============================================
-### STEP 6: DOCTOR CHECKS THEIR SUBSCRIPTION (Optional)
-### ============================================
-### Doctor can verify their subscription was purchased
-
-GET http://localhost:5000/api/doctor/my-subscription
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1NGM2MTczMTFmZjk1YzNlY2ZiN2IiLCJlbWFpbCI6ImRvY3RvckBnbWFpbC5jb20iLCJyb2xlIjoiRE9DVE9SIiwiaWF0IjoxNzY1MTAwNjQxLCJleHAiOjE3NjU3MDU0NDF9.82Wk6cHGBB8uCVnBUkzZwR18umgp1-JHj4wm7r22IdA
-
-###
-### ============================================
-### STEP 7: ADMIN APPROVES DOCTOR
-### ============================================
-### Replace YOUR_ADMIN_TOKEN with token from STEP 1
-### Replace DOCTOR_ID_HERE with doctor ID from STEP 3
-
-POST http://localhost:5000/api/auth/approve-doctor
+### 1.4 Doctor Login
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTEwMTE4MCwiZXhwIjoxNzY1NzA1OTgwfQ.J2tVk9uC3LMse405HqSDerseF7BwQr-KtZbKTL8QUTg
 
 {
-    "doctorId": "69354c617311ff95c3ecfb7b"
+    "email": "doctor2@gmail.com",
+    "password": "123456"
 }
 
+### Note: If doctor is PENDING (not approved by admin yet), login will succeed but return:
+### {
+###   "success": true,
+###   "message": "Your account is pending admin approval. You can complete your profile and purchase a subscription, but you will not be visible to patients until approved.",
+###   "data": {
+###     "user": {...},
+###     "token": "...",
+###     "message": "..."
+###   }
+### }
+
+### 1.5 Patient Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+    "email": "patient@gmail.com",
+    "password": "123456"
+}
+
+### ⚠️ TROUBLESHOOTING: If login fails with "Invalid email or password"
+### This usually means:
+### 1. Wrong password entered
+### 2. User was registered BEFORE the password fix (double-hashed password)
+### 
+### SOLUTION: Register a NEW patient/doctor with a different email - it will work correctly
+### OR: Use admin reset password endpoint (if available) to fix existing accounts
+
+### 1.6 Change Password
+POST {{baseUrl}}/auth/change-password
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "oldPassword": "123456",
+    "newPassword": "newpassword123"
+}
+
+### 1.7 Refresh Token
+POST {{baseUrl}}/auth/refresh-token
+Content-Type: application/json
+
+{
+    "refreshToken": "YOUR_REFRESH_TOKEN"
+}
+
+### ============================================
+### STEP 2: ADMIN SETUP (SPECIALIZATIONS & PLANS)
+### ============================================
+
+### 2.1 Admin Creates Specialization (Cardiology)
+POST {{baseUrl}}/specialization
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "Cardiology",
+    "slug": "cardiology",
+    "description": "Heart and cardiovascular system",
+    "icon": "heart-icon.png"
+}
+
+### 2.2 Admin Creates Another Specialization (Dermatology)
+POST {{baseUrl}}/specialization
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "Dermatology",
+    "slug": "dermatology",
+    "description": "Skin and hair care",
+    "icon": "skin-icon.png"
+}
+
+### 2.3 Admin Creates More Specializations (Examples)
+POST {{baseUrl}}/specialization
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "Pediatrics",
+    "slug": "pediatrics",
+    "description": "Child healthcare",
+    "icon": "pediatrics-icon.png"
+}
+
+### 2.4 Admin Creates Another Specialization
+POST {{baseUrl}}/specialization
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "Orthopedics",
+    "slug": "orthopedics",
+    "description": "Bone and joint care",
+    "icon": "orthopedics-icon.png"
+}
+
+### 2.5 Get All Specializations (Public - Doctors can view and select one)
+GET {{baseUrl}}/specialization
+
+### Note: Doctors must select a specializationId from this list when creating/updating their profile
+### The specializationId will be used in the doctor profile creation (Step 3.3)
+
+### 2.4 Admin Creates BASIC Subscription Plan
+POST {{baseUrl}}/admin/subscription-plan
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "BASIC",
+    "price": 50,
+    "durationInDays": 30,
+    "features": ["Basic profile", "Limited services"]
+}
+
+### 2.7 Admin Creates MEDIUM Subscription Plan
+POST {{baseUrl}}/admin/subscription-plan
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "MEDIUM",
+    "price": 150,
+    "durationInDays": 30,
+    "features": ["Advanced profile", "Video calls", "Product sales"]
+}
+
+### 2.6 Admin Creates FULL Subscription Plan
+POST {{baseUrl}}/admin/subscription-plan
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "FULL",
+    "price": 300,
+    "durationInDays": 30,
+    "features": ["Unlimited features", "Priority listing", "All features"]
+}
+
+### 2.9 Get All Active Plans (Public)
+GET {{baseUrl}}/admin/subscription-plan/active
+
+### ============================================
+### STEP 3: DOCTOR SETUP (BEFORE APPROVAL)
+### ============================================
+
+### 3.1 Doctor Views Available Specializations (Public - to select one)
+GET {{baseUrl}}/specialization
+
+### Note: Doctor must select a specializationId from the list above when creating/updating profile
+
+### 3.2 Doctor Buys Subscription Plan
+POST {{baseUrl}}/doctor/buy-subscription
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "planId": "69357b8dbb0a5dab75daf1db"
+}
+
+### 3.3 Doctor Checks Subscription Status
+GET {{baseUrl}}/doctor/my-subscription
+Authorization: Bearer {{doctorToken}}
+
+### 3.4 Doctor Creates/Updates Profile (Complete Profile)
+### IMPORTANT: Use specializationId from Step 2.5 (Get All Specializations)
+PUT {{baseUrl}}/doctor/profile
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "title": "Senior Cardiologist",
+    "biography": "Experienced cardiologist with 15 years of practice in cardiovascular medicine",
+    "specializationId": "6938703c838fee7f10981e99",
+    "experienceYears": 15,
+    "services": [
+        {
+            "name": "Cardiac Consultation",
+            "price": 500
+        },
+        {
+            "name": "ECG Test",
+            "price": 300
+        },
+        {
+            "name": "Echocardiogram",
+            "price": 800
+        }
+    ],
+    "consultationFees": {
+        "clinic": 500,
+        "online": 400
+    },
+    "clinics": [
+        {
+            "name": "City Hospital",
+            "address": "123 Main Street",
+            "city": "New York",
+            "state": "NY",
+            "country": "USA",
+            "phone": "1234567890",
+            "lat": 40.7128,
+            "lng": -74.0060,
+            "timings": [
+                {
+                    "dayOfWeek": "Monday",
+                    "startTime": "09:00",
+                    "endTime": "17:00"
+                },
+                {
+                    "dayOfWeek": "Wednesday",
+                    "startTime": "09:00",
+                    "endTime": "17:00"
+                },
+                {
+                    "dayOfWeek": "Friday",
+                    "startTime": "09:00",
+                    "endTime": "17:00"
+                }
+            ]
+        }
+    ],
+    "education": [
+        {
+            "degree": "MD",
+            "college": "Harvard Medical School",
+            "year": "2005"
+        },
+        {
+            "degree": "MBBS",
+            "college": "Johns Hopkins University",
+            "year": "2001"
+        }
+    ],
+    "experience": [
+        {
+            "hospital": "City Hospital",
+            "fromYear": "2008",
+            "toYear": "Present",
+            "designation": "Senior Cardiologist"
+        },
+        {
+            "hospital": "General Hospital",
+            "fromYear": "2005",
+            "toYear": "2008",
+            "designation": "Cardiologist"
+        }
+    ],
+    "isAvailableOnline": true,
+    "isFeatured": false
+}
+
+### 3.5 Doctor Sets Availability
+POST {{baseUrl}}/availability
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "date": "2024-02-15",
+    "timeSlots": [
+        {
+            "startTime": "09:00",
+            "endTime": "10:00",
+            "isAvailable": true
+        },
+        {
+            "startTime": "10:00",
+            "endTime": "11:00",
+            "isAvailable": true
+        },
+        {
+            "startTime": "11:00",
+            "endTime": "12:00",
+            "isAvailable": true
+        },
+        {
+            "startTime": "14:00",
+            "endTime": "15:00",
+            "isAvailable": true
+        },
+        {
+            "startTime": "15:00",
+            "endTime": "16:00",
+            "isAvailable": true
+        }
+    ],
+    "isAvailable": true
+}
+
+### 3.6 Doctor Gets Availability
+GET {{baseUrl}}/availability?fromDate=2024-02-01&toDate=2024-02-28
+Authorization: Bearer {{doctorToken}}
+
+### ============================================
+### STEP 4: ADMIN APPROVAL
+### ============================================
+
+### 4.1 Admin Views Pending Doctors
+GET {{baseUrl}}/admin/doctors?status=PENDING&page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### 4.2 Admin Approves Doctor
+POST {{baseUrl}}/auth/approve-doctor
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "doctorId": "6939d382f090219c4045c5cd"
+}
+
+
+### 4.3 Admin Views Approved Doctors
+GET {{baseUrl}}/admin/doctors?status=APPROVED&subscriptionStatus=ACTIVE&page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### ============================================
+### STEP 5: PATIENT ACTIONS (SEARCH & BOOK)
+### ============================================
+
+### 5.1 Patient Views All Available Doctors (Public)
+GET {{baseUrl}}/doctor?page=1&limit=10
+
+### 5.2 Patient Searches Doctors by Specialization
+GET {{baseUrl}}/doctor?specializationId=6938703c838fee7f10981e99&page=1&limit=10
+
+### 5.3 Patient Searches Doctors by City
+GET {{baseUrl}}/doctor?city=New York&page=1&limit=10
+
+### 5.4 Patient Views Doctor Profile (Includes Products)
+GET {{baseUrl}}/doctor/profile/6939d382f090219c4045c5cd
+
+### Note: Doctor profile response includes products array (if doctor has FULL subscription and created products)
+
+### 5.5 Patient Checks Available Time Slots
+GET {{baseUrl}}/availability/slots?doctorId=DOCTOR_ID&date=2024-02-15
+
+### 5.6 Patient Checks Specific Time Slot Availability
+GET {{baseUrl}}/availability/check?doctorId=DOCTOR_ID&date=2024-02-15&timeSlot=09:00-10:00
+
+### 5.7 Patient Creates Appointment Request
+POST {{baseUrl}}/appointment
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "doctorId": "6939d382f090219c4045c5cd",
+    "patientId": "6939d3a8f090219c4045c5d0",
+    "appointmentDate": "2024-02-15",
+    "appointmentTime": "10:00",
+    "bookingType": "VISIT",
+    "patientNotes": "Regular checkup and consultation",
+    "clinicName": "City Hospital"
+}
+
+### 5.8 Patient Creates Online Appointment Request
+POST {{baseUrl}}/appointment
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "doctorId": "6939d382f090219c4045c5cd",
+    "patientId": "6939d3a8f090219c4045c5d0",
+    "appointmentDate": "2024-02-15",
+    "appointmentTime": "14:00",
+    "bookingType": "ONLINE",
+    "patientNotes": "Online consultation for follow-up"
+}
+
+### 5.9 Patient Views Their Appointments
+GET {{baseUrl}}/appointment?patientId=69386ff9838fee7f10981e93&page=1&limit=10
+Authorization: Bearer {{patientToken}}
+
+### 5.10 Patient Gets Upcoming Appointments
+GET {{baseUrl}}/appointment?patientId=6939d3a8f090219c4045c5d0&status=CONFIRMED&page=1&limit=10
+Authorization: Bearer {{patientToken}}
+
+### ============================================
+### STEP 6: DOCTOR ACTIONS (MANAGE APPOINTMENTS)
+### ============================================
+
+### 6.1 Doctor Views Dashboard
+GET {{baseUrl}}/doctor/dashboard
+Authorization: Bearer {{doctorToken}}
+
+### 6.2 Doctor Gets All Pending Appointment Requests
+GET {{baseUrl}}/appointment?doctorId=6939d382f090219c4045c5cd&status=PENDING&page=1&limit=10
+Authorization: Bearer {{doctorToken}}
+
+### 6.3 Doctor Accepts Appointment Request
+### IMPORTANT: After doctor accepts, appointment status becomes CONFIRMED
+### Communication (chat, video, audio) will be available ONLY at the scheduled appointment time
+POST {{baseUrl}}/appointment/6939d537f090219c4045c67b/accept
+Authorization: Bearer {{doctorToken}}
+
+### 6.4 Doctor Rejects Appointment Request (Alternative)
+POST {{baseUrl}}/appointment/693877258524b65caec4c41f/reject
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "reason": "Time slot not available"
+}
+
+### 6.5 Doctor Gets Confirmed Appointments
+GET {{baseUrl}}/appointment?doctorId=69386fd2838fee7f10981e90&status=CONFIRMED&page=1&limit=10
+Authorization: Bearer {{doctorToken}}
+
+### 6.6 Doctor Gets Today's Appointments
+GET {{baseUrl}}/appointment?doctorId=69386fd2838fee7f10981e90&fromDate=2024-02-15&toDate=2024-02-15&page=1&limit=10
+Authorization: Bearer {{doctorToken}}
+
+### 6.7 Doctor Gets Reviews
+GET {{baseUrl}}/doctor/reviews?page=1&limit=10
+Authorization: Bearer {{doctorToken}}
+
+### ============================================
+### STEP 7: PAYMENT PROCESSING (DUMMY)
+### ============================================
+
+### 7.1 Process Appointment Payment (DUMMY)
+POST {{baseUrl}}/payment/appointment
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "appointmentId": "APPOINTMENT_ID_HERE",
+    "amount": 500,
+    "paymentMethod": "DUMMY"
+}
+
+### Note: paymentMethod defaults to "DUMMY" if not provided
+
+### 7.2 Process Subscription Payment (DUMMY)
+POST {{baseUrl}}/payment/subscription
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "subscriptionPlanId": "PLAN_ID_HERE",
+    "amount": 150,
+    "paymentMethod": "DUMMY"
+}
+
+### 7.3 Process Product Payment (DUMMY)
+POST {{baseUrl}}/payment/product
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "productId": "PRODUCT_ID_HERE",
+    "amount": 50,
+    "paymentMethod": "DUMMY"
+}
+
+### 7.4 Patient Gets Payment History
+GET {{baseUrl}}/patient/payments/history?page=1&limit=20
+Authorization: Bearer {{patientToken}}
+
+### 7.5 Get User Transactions
+GET {{baseUrl}}/payment/transactions?page=1&limit=10&status=SUCCESS
+Authorization: Bearer {{patientToken}}
+
+### ============================================
+### STEP 8: APPOINTMENT MANAGEMENT
+### ============================================
+
+### 8.1 Get Appointment by ID
+GET {{baseUrl}}/appointment/APPOINTMENT_ID_HERE
+Authorization: Bearer {{patientToken}}
+
+### 8.2 Doctor Completes Appointment (Add Notes)
+PUT {{baseUrl}}/appointment/APPOINTMENT_ID_HERE/status
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "status": "COMPLETED",
+    "notes": "Patient consultation completed successfully. Prescribed medication."
+}
+
+### 8.3 Patient Cancels Appointment
+POST {{baseUrl}}/appointment/APPOINTMENT_ID_HERE/cancel
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "reason": "Unable to attend due to emergency"
+}
+
+### ============================================
+### STEP 9: PATIENT DASHBOARD & FEATURES
+### ============================================
+
+### 9.1 Patient Dashboard Statistics
+GET {{baseUrl}}/patient/dashboard
+Authorization: Bearer {{patientToken}}
+
+### 9.2 Patient Gets Appointment History
+GET {{baseUrl}}/patient/appointments/history?page=1&limit=20
+Authorization: Bearer {{patientToken}}
+
+### 9.3 Patient Gets Completed Appointments
+GET {{baseUrl}}/patient/appointments/history?status=COMPLETED&page=1&limit=20
+Authorization: Bearer {{patientToken}}
+
+### 9.4 Patient Updates Profile
+PUT {{baseUrl}}/users/profile
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "fullName": "Updated Patient Name",
+    "phone": "9876543210",
+    "gender": "FEMALE",
+    "dob": "1990-01-01",
+    "profileImage": "https://example.com/profile.jpg",
+    "bloodGroup": "O+",
+    "address": {
+        "line1": "456 Patient Street",
+        "city": "Patient City",
+        "state": "State",
+        "country": "Country",
+        "zip": "54321"
+    },
+    "emergencyContact": {
+        "name": "Emergency Contact",
+        "phone": "1111111111",
+        "relation": "Spouse"
+    }
+}
+
+### ============================================
+### STEP 10: MEDICAL RECORDS
+### ============================================
+
+### 10.1 Patient Creates Medical Record
+POST {{baseUrl}}/patient/medical-records
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "title": "Blood Test Report",
+    "description": "Complete blood count test results",
+    "recordType": "LAB_REPORT",
+    "fileUrl": "https://example.com/reports/blood-test.pdf",
+    "fileName": "blood-test-report.pdf",
+    "fileSize": 1024000,
+    "relatedAppointmentId": "APPOINTMENT_ID_HERE",
+    "relatedDoctorId": "DOCTOR_ID_HERE"
+}
+
+### 10.2 Patient Gets Medical Records
+GET {{baseUrl}}/patient/medical-records?page=1&limit=20
+Authorization: Bearer {{patientToken}}
+
+### 10.3 Patient Gets Medical Records by Type
+GET {{baseUrl}}/patient/medical-records?recordType=PRESCRIPTION&page=1&limit=20
+Authorization: Bearer {{patientToken}}
+
+### 10.4 Patient Deletes Medical Record
+DELETE {{baseUrl}}/patient/medical-records/RECORD_ID_HERE
+Authorization: Bearer {{patientToken}}
+
+### ============================================
+### STEP 11: REVIEWS & FAVORITES
+### ============================================
+
+### 11.1 Patient Creates Review (After Completed Appointment)
+POST {{baseUrl}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "doctorId": "DOCTOR_ID_HERE",
+    "rating": 5,
+    "reviewText": "Excellent doctor, very professional and caring"
+}
+
+### 11.2 Get Doctor Reviews (Public)
+GET {{baseUrl}}/reviews?doctorId=DOCTOR_ID_HERE&page=1&limit=10
+
+### 11.3 Patient Adds Doctor to Favorites
+POST {{baseUrl}}/favorite
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "doctorId": "DOCTOR_ID_HERE"
+}
+
+### 11.4 Patient Gets Favorite Doctors
+GET {{baseUrl}}/favorite
+Authorization: Bearer {{patientToken}}
+
+### ============================================
+### STEP 12: CHAT & COMMUNICATION
+### ============================================
+### IMPORTANT: Communication Rules:
+### 1. Doctor must ACCEPT appointment before communication can begin
+### 2. Communication (chat, video, audio) is ONLY available at the scheduled appointment date/time
+### 3. All communication is DISABLED for PENDING or REJECTED appointments
+### 4. Chat works through REST API (no sockets required)
+### 5. Video/Audio calls can only start at appointment time
+
+### 12.1 Patient Starts Conversation with Doctor (After Appointment is CONFIRMED and Time Started)
+### Note: Requires appointmentId, appointment must be CONFIRMED, and appointment time must have started
+POST {{baseUrl}}/chat/conversation
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "doctorId": "6939d382f090219c4045c5cd",
+    "patientId": "6939d3a8f090219c4045c5d0",
+    "appointmentId": "6939d537f090219c4045c67b"
+}
+
+### 12.2 Patient Sends Message (After Appointment is CONFIRMED and Time Started)
+### Note: Requires appointmentId, appointment must be CONFIRMED, and appointment time must have started
+POST {{baseUrl}}/chat/send
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "doctorId": "6939d382f090219c4045c5cd",
+    "patientId": "6939d3a8f090219c4045c5d0",
+    "appointmentId": "6939d537f090219c4045c67b",
+    "message": "Hello Doctor, I have a question about my appointment"
+}
+
+### 12.3 Doctor Sends Message (After Appointment is CONFIRMED and Time Started)
+POST {{baseUrl}}/chat/send
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "doctorId": "6939d382f090219c4045c5cd",
+    "patientId": "6939d3a8f090219c4045c5d0",
+    "appointmentId": "6939d537f090219c4045c67b",
+    "message": "Hello, how can I help you today?"
+}
+
+### 12.4 Get Messages for Conversation
+GET {{baseUrl}}/chat/messages/CONVERSATION_ID_HERE?page=1&limit=50
+Authorization: Bearer {{patientToken}}
+
+### ============================================
+### 12.6 ADMIN-DOCTOR CHAT (No Appointment Required)
+### ============================================
+### IMPORTANT: Admin-Doctor chat works WITHOUT appointments
+### - No appointment required
+### - Available anytime (no time restrictions)
+### - Both admin and doctor can initiate conversation
+### - Works via REST API (no sockets)
+
+### 12.6.1 Admin Starts Conversation with Doctor
+POST {{baseUrl}}/chat/conversation
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "adminId": "69352d318df70e96dd70631f",
+    "doctorId": "6939d382f090219c4045c5cd"
+}
+
+### 12.6.2 Admin Sends Message to Doctor
+POST {{baseUrl}}/chat/send
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "adminId": "69352d318df70e96dd70631f",
+    "doctorId": "6939d382f090219c4045c5cd",
+    "message": "Hello Doctor, I need to discuss your profile verification."
+}
+
+### 12.6.3 Doctor Sends Message to Admin
+POST {{baseUrl}}/chat/send
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "adminId": "69352d318df70e96dd70631f",
+    "doctorId": "6939d382f090219c4045c5cd",
+    "message": "Hello Admin, I've updated my profile. Please review it."
+}
+
+### 12.6.4 Admin Sends Message with Attachment
+POST {{baseUrl}}/chat/send
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "adminId": "69352d318df70e96dd70631f",
+    "doctorId": "6939d382f090219c4045c5cd",
+    "message": "Please review these guidelines",
+    "attachments": [
+        {
+            "type": "PDF",
+            "url": "https://example.com/guidelines.pdf"
+        }
+    ]
+}
+
+### 12.6.5 Get Admin-Doctor Conversation Messages
+GET {{baseUrl}}/chat/messages/CONVERSATION_ID_HERE?page=1&limit=50
+Authorization: Bearer {{adminToken}}
+
+### 12.6.6 Admin Gets All Conversations
+GET {{baseUrl}}/chat/conversations?page=1&limit=20
+Authorization: Bearer {{adminToken}}
+
+### 12.6.7 Doctor Gets All Conversations (Admin-Doctor + Doctor-Patient)
+GET {{baseUrl}}/chat/conversations?page=1&limit=20
+Authorization: Bearer {{doctorToken}}
+
+### 12.6.8 Admin Gets Unread Message Count
+GET {{baseUrl}}/chat/unread-count
+Authorization: Bearer {{adminToken}}
+
+### 12.6.9 Doctor Gets Unread Message Count
+GET {{baseUrl}}/chat/unread-count
+Authorization: Bearer {{doctorToken}}
+
+### 12.6.10 Admin Marks Messages as Read in Conversation
+PUT {{baseUrl}}/chat/conversations/CONVERSATION_ID_HERE/read
+Authorization: Bearer {{adminToken}}
+
+### 12.6.11 Doctor Marks Messages as Read in Conversation
+PUT {{baseUrl}}/chat/conversations/CONVERSATION_ID_HERE/read
+Authorization: Bearer {{doctorToken}}
+
+### 12.6.12 Admin Gets Doctors List for Chat (with unread counts and search)
+GET {{baseUrl}}/admin/doctors/chat?search=doctor&specializationId=SPECIALIZATION_ID&status=APPROVED&page=1&limit=20
+Authorization: Bearer {{adminToken}}
+
+### Note:
+### - Admin-Doctor chat: No appointment required, available anytime
+### - Doctor-Patient chat: Requires appointment, time-locked
+### - Both use REST API (no sockets required)
+### - Unread message counts are included in conversation lists
+### - Notifications are sent to doctors when admin sends messages
+
+### ============================================
+### 12.7 DOCTOR-PATIENT CHAT (With Appointment)
+### ============================================
+
+### 12.7.1 Patient Sends Message with Attachment
+POST {{baseUrl}}/chat/send
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "doctorId": "DOCTOR_ID_HERE",
+    "patientId": "PATIENT_ID_HERE",
+    "appointmentId": "APPOINTMENT_ID_HERE",
+    "message": "Here are my test results",
+    "attachments": [
+        {
+            "type": "image",
+            "url": "https://example.com/test-results.jpg"
+        }
+    ]
+}
+
+### 12.6 Doctor Sends Message with Attachment
+POST {{baseUrl}}/chat/send
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "doctorId": "DOCTOR_ID_HERE",
+    "patientId": "PATIENT_ID_HERE",
+    "appointmentId": "APPOINTMENT_ID_HERE",
+    "message": "Please review this prescription",
+    "attachments": [
+        {
+            "type": "pdf",
+            "url": "https://example.com/prescription.pdf"
+        }
+    ]
+}
+
+### ⚠️ ERROR EXAMPLES:
+### If appointment is PENDING:
+### Response: "Appointment is pending doctor acceptance. Communication will be available after the doctor accepts the appointment."
+###
+### If appointment is REJECTED:
+### Response: "This appointment was rejected. Communication is not available."
+###
+### If appointment time hasn't started:
+### Response: "Communication is only available at the scheduled appointment time. Your appointment is scheduled for [date/time]."
+
+### ============================================
+### STEP 13: VIDEO & AUDIO SESSIONS
+### ============================================
+### IMPORTANT: Video/Audio Call Rules:
+### 1. Appointment must be CONFIRMED (doctor accepted)
+### 2. Appointment time must have STARTED (current time >= appointment date + time)
+### 3. Only available for ONLINE booking type appointments
+### 4. Both doctor and patient can start the session
+
+### 13.1 Start Video Session (After Appointment is CONFIRMED and Time Started)
+### Note: Can be called by either doctor or patient, but appointment time must have started
+POST {{baseUrl}}/video/start
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "appointmentId": "APPOINTMENT_ID_HERE"
+}
+
+### 13.2 Patient Starts Video Session (Alternative)
+POST {{baseUrl}}/video/start
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "appointmentId": "APPOINTMENT_ID_HERE"
+}
+
+### 13.3 Get Video Session by Appointment ID
+GET {{baseUrl}}/video/by-appointment/APPOINTMENT_ID_HERE
+Authorization: Bearer {{doctorToken}}
+
+### 13.4 End Video Session (Doctor or Patient can end)
+POST {{baseUrl}}/video/end
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "sessionId": "VIDEO_SESSION_ID_HERE"
+}
+
+### 13.5 Patient Ends Video Session
+POST {{baseUrl}}/video/end
+Content-Type: application/json
+Authorization: Bearer {{patientToken}}
+
+{
+    "sessionId": "VIDEO_SESSION_ID_HERE"
+}
+
+### ⚠️ ERROR EXAMPLES:
+### If appointment is PENDING:
+### Response: "Appointment is pending doctor acceptance. Video call will be available after the doctor accepts the appointment."
+###
+### If appointment is REJECTED:
+### Response: "This appointment was rejected. Video call is not available."
+###
+### If appointment time hasn't started:
+### Response: "Video call is only available at the scheduled appointment time. Your appointment is scheduled for [date/time]."
+###
+### If appointment is not ONLINE type:
+### Response: "Video call is only available for online appointments"
+
+### ============================================
+### STEP 14: NOTIFICATIONS
+### ============================================
+
+### 14.1 Patient Gets Notifications
+GET {{baseUrl}}/notification?isRead=false&page=1&limit=20
+Authorization: Bearer {{patientToken}}
+
+### 14.2 Doctor Gets Notifications
+GET {{baseUrl}}/notification?isRead=false&page=1&limit=20
+Authorization: Bearer {{doctorToken}}
+
+### 14.3 Mark Notification as Read
+PUT {{baseUrl}}/notification/NOTIFICATION_ID_HERE/read
+Authorization: Bearer {{patientToken}}
+
+### ============================================
+### STEP 15: ADMIN MANAGEMENT
+### ============================================
+
+### 15.1 Admin Dashboard Statistics
+GET {{baseUrl}}/admin/dashboard
+Authorization: Bearer {{adminToken}}
+
+### 15.2 Admin Gets All Doctors
+GET {{baseUrl}}/admin/doctors?status=APPROVED&subscriptionStatus=ACTIVE&page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### 15.3 Admin Gets All Patients
+GET {{baseUrl}}/admin/patients?page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### 15.4 Admin Gets All Appointments
+GET {{baseUrl}}/admin/appointments?status=CONFIRMED&page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### 15.5 Admin Gets Appointments by Doctor
+GET {{baseUrl}}/admin/appointments?doctorId=DOCTOR_ID_HERE&status=CONFIRMED&page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### 15.6 Admin Gets All Transactions (Payment-related only)
+GET {{baseUrl}}/admin/transactions?status=SUCCESS&page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### 15.7 Admin Gets All Reviews
+GET {{baseUrl}}/admin/reviews?page=1&limit=20
+Authorization: Bearer {{adminToken}}
+
+### 15.8 Admin Updates User Status (Approve/Reject/Block)
+PUT {{baseUrl}}/admin/users/USER_ID_HERE/status
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "status": "APPROVED"
+}
+
+### 15.9 Admin Updates Specialization
+PUT {{baseUrl}}/specialization/SPEC_ID_HERE
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "Updated Cardiology",
+    "description": "Updated description for heart and cardiovascular system",
+    "icon": "updated-heart-icon.png"
+}
+
+### 15.10 Admin Deletes Specialization
+DELETE {{baseUrl}}/specialization/SPEC_ID_HERE
+Authorization: Bearer {{adminToken}}
+
+### Note: Cannot delete specialization if doctors are using it
+
+### 15.11 Admin Updates Profile
+PUT {{baseUrl}}/admin/profile
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "fullName": "Admin Updated Name",
+    "phone": "1234567890",
+    "gender": "MALE",
+    "profileImage": "https://example.com/admin-image.jpg",
+    "address": {
+        "line1": "123 Admin Street",
+        "city": "Admin City",
+        "state": "Admin State",
+        "country": "Admin Country",
+        "zip": "12345"
+    }
+}
+
+### ============================================
+### STEP 15.12: ADMIN ANNOUNCEMENTS SYSTEM
+### ============================================
+### IMPORTANT: Announcement Features:
+### - Broadcast: Send to all doctors
+### - Targeted: Send to selected doctors by specialization, subscription, location, or individually
+### - Priority: NORMAL, IMPORTANT, URGENT
+### - Expiry: NO_EXPIRY, EXPIRE_AFTER_DATE, AUTO_HIDE_AFTER_READ
+### - Pinning: Pin important announcements at top
+### - Read Tracking: Track which doctors have read announcements
+
+### 15.12.1 Admin Creates Broadcast Announcement (All Doctors)
+POST {{baseUrl}}/announcements
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "title": "Platform Maintenance Notice",
+    "message": "The platform will be under maintenance on January 15, 2024 from 2 AM to 4 AM. Please plan accordingly.",
+    "announcementType": "BROADCAST",
+    "priority": "IMPORTANT",
+    "isPinned": true,
+    "expiryType": "EXPIRE_AFTER_DATE",
+    "expiryDate": "2024-01-20T00:00:00.000Z"
+}
+
+### 15.12.2 Admin Creates Targeted Announcement (By Specialization)
+POST {{baseUrl}}/announcements
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "title": "New Cardiology Guidelines",
+    "message": "Please review the updated cardiology treatment guidelines. They are now available in your dashboard.",
+    "announcementType": "TARGETED",
+    "priority": "URGENT",
+    "targetCriteria": {
+        "specializationIds": ["SPECIALIZATION_ID_HERE"]
+    },
+    "isPinned": true,
+    "expiryType": "NO_EXPIRY"
+}
+
+### 15.12.3 Admin Creates Targeted Announcement (By Subscription Plan)
+POST {{baseUrl}}/announcements
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "title": "Premium Subscription Benefits Update",
+    "message": "New features have been added to the Premium subscription plan. Check your dashboard for details.",
+    "announcementType": "TARGETED",
+    "priority": "NORMAL",
+    "targetCriteria": {
+        "subscriptionPlanIds": ["SUBSCRIPTION_PLAN_ID_HERE"]
+    },
+    "expiryType": "AUTO_HIDE_AFTER_READ"
+}
+
+### 15.12.4 Admin Creates Targeted Announcement (By Location)
+POST {{baseUrl}}/announcements
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "title": "Regional Conference Announcement",
+    "message": "Join us for the regional medical conference in New York on February 10, 2024.",
+    "announcementType": "TARGETED",
+    "priority": "IMPORTANT",
+    "targetCriteria": {
+        "location": {
+            "city": "New York",
+            "state": "New York",
+            "country": "USA"
+        }
+    },
+    "expiryType": "EXPIRE_AFTER_DATE",
+    "expiryDate": "2024-02-15T00:00:00.000Z"
+}
+
+### 15.12.5 Admin Creates Targeted Announcement (Individual Doctors)
+POST {{baseUrl}}/announcements
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "title": "Profile Verification Required",
+    "message": "Your profile requires additional verification. Please upload the requested documents.",
+    "announcementType": "TARGETED",
+    "priority": "URGENT",
+    "targetCriteria": {
+        "individualDoctorIds": ["DOCTOR_ID_1", "DOCTOR_ID_2"]
+    },
+    "isPinned": true,
+    "expiryType": "NO_EXPIRY"
+}
+
+### 15.12.6 Admin Creates Announcement with Image and Link
+POST {{baseUrl}}/announcements
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "title": "New Feature Launch",
+    "message": "We're excited to announce our new telemedicine features! Click the link below to learn more.",
+    "announcementType": "BROADCAST",
+    "priority": "IMPORTANT",
+    "image": "https://example.com/announcement-image.jpg",
+    "link": "https://example.com/new-features",
+    "isPinned": false,
+    "expiryType": "NO_EXPIRY"
+}
+
+### 15.12.7 Admin Lists All Announcements
+GET {{baseUrl}}/announcements?priority=URGENT&announcementType=BROADCAST&isPinned=true&page=1&limit=20
+Authorization: Bearer {{adminToken}}
+
+### 15.12.8 Admin Gets Single Announcement
+GET {{baseUrl}}/announcements/ANNOUNCEMENT_ID_HERE
+Authorization: Bearer {{adminToken}}
+
+### 15.12.9 Admin Updates Announcement
+PUT {{baseUrl}}/announcements/ANNOUNCEMENT_ID_HERE
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "title": "Updated Announcement Title",
+    "message": "Updated message content",
+    "priority": "URGENT",
+    "isPinned": true
+}
+
+### 15.12.10 Admin Gets Announcement Read Status (Who has read it)
+GET {{baseUrl}}/announcements/ANNOUNCEMENT_ID_HERE/read-status?page=1&limit=50
+Authorization: Bearer {{adminToken}}
+
+### 15.12.11 Admin Deletes Announcement
+DELETE {{baseUrl}}/announcements/ANNOUNCEMENT_ID_HERE
+Authorization: Bearer {{adminToken}}
+
+### ============================================
+### STEP 15.13: DOCTOR ANNOUNCEMENTS
+### ============================================
+
+### 15.13.1 Doctor Gets All Announcements
+GET {{baseUrl}}/announcements/doctor?isRead=false&page=1&limit=20
+Authorization: Bearer {{doctorToken}}
+
+### 15.13.2 Doctor Gets Unread Announcement Count
+GET {{baseUrl}}/announcements/unread-count
+Authorization: Bearer {{doctorToken}}
+
+### 15.13.3 Doctor Marks Announcement as Read
+POST {{baseUrl}}/announcements/ANNOUNCEMENT_ID_HERE/read
+Authorization: Bearer {{doctorToken}}
+
+### 15.13.4 Doctor Gets Single Announcement
+GET {{baseUrl}}/announcements/ANNOUNCEMENT_ID_HERE
+Authorization: Bearer {{doctorToken}}
+
+### Note:
+### - Broadcast announcements are visible to all approved doctors
+### - Targeted announcements are visible only to matching doctors
+### - Urgent announcements are highlighted
+### - Pinned announcements appear at the top
+### - Auto-hide announcements disappear after being read
+### - Expired announcements are automatically filtered out
+
+### ============================================
+### STEP 16: PRODUCTS & PHARMACY
+### ============================================
+
+### 16.1 Doctor Creates Product
+### IMPORTANT: 
+### 1. Doctor must have FULL subscription plan to create products
+### 2. sellerId and sellerType are automatically set from authenticated user (no need to send)
+### 3. Products will appear in doctor profile for patients to see
+POST {{baseUrl}}/products
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "name": "Vitamin D Supplements",
+    "description": "High quality vitamin D supplements",
+    "price": 25.99,
+    "discountPrice": 19.99,
+    "stock": 100,
+    "category": "Supplements",
+    "subCategory": "Vitamins",
+    "tags": ["health", "vitamins", "supplements"]
+}
+
+### ⚠️ ERROR: If doctor doesn't have FULL subscription:
+### Response: "Only doctors with FULL subscription plan can create products. Please upgrade to FULL plan."
+
+### 16.2 Get Doctor's Products (Shown in Doctor Profile)
+GET {{baseUrl}}/products?sellerId=6939d382f090219c4045c5cd&sellerType=DOCTOR&page=1&limit=10
+
+### 16.3 Get All Products (Public)
+GET {{baseUrl}}/products?category=Supplements&page=1&limit=10
+
+### 16.4 Get Product by ID
+GET {{baseUrl}}/products/PRODUCT_ID_HERE
+
+### 16.5 Update Product (Doctor must have FULL subscription)
+PUT {{baseUrl}}/products/PRODUCT_ID_HERE
+Content-Type: application/json
+Authorization: Bearer {{doctorToken}}
+
+{
+    "price": 29.99,
+    "stock": 150,
+    "description": "Updated description"
+}
+
+### 16.6 Delete Product
+DELETE {{baseUrl}}/products/PRODUCT_ID_HERE
+Authorization: Bearer {{doctorToken}}
+
+### Note: 
+### - Products are automatically shown in doctor profile when viewing doctor details
+### - Products appear in doctor listing (up to 5 products per doctor)
+### - Only doctors with FULL subscription can create/update/delete products
+### - sellerId and sellerType are automatically set (no need to send in request)
+
+### ============================================
+### 16.7 ADMIN PRODUCTS (Website Products)
+### ============================================
+
+### 16.7.1 Admin Creates Product (Shown on Website)
+### IMPORTANT: Admin products are shown on the website and don't require subscription
+POST {{baseUrl}}/products
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "Premium Health Package",
+    "description": "Comprehensive health checkup package with lab tests",
+    "price": 299.99,
+    "discountPrice": 249.99,
+    "stock": 50,
+    "category": "Health Packages",
+    "subCategory": "Checkup Packages",
+    "tags": ["health", "checkup", "lab", "premium"]
+}
+
+### 16.7.2 Admin Updates Product
+PUT {{baseUrl}}/products/PRODUCT_ID_HERE
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "price": 279.99,
+    "stock": 75,
+    "description": "Updated comprehensive health checkup package"
+}
+
+### 16.7.3 Admin Deletes Product
+DELETE {{baseUrl}}/products/PRODUCT_ID_HERE
+Authorization: Bearer {{adminToken}}
+
+### 16.7.4 Get All Admin Products (Website Products)
+GET {{baseUrl}}/products?sellerType=ADMIN&page=1&limit=10
+
+### 16.7.5 Get All Products (Public - Includes Admin, Doctor, Pharmacy)
+GET {{baseUrl}}/products?page=1&limit=20
+
+### Note:
+### - Admin can create/update/delete products without subscription requirement
+### - Admin products are shown on the website (public access)
+### - Admin can update/delete any product (not just their own)
+### - All products (Admin, Doctor, Pharmacy) appear in public product listing
+
+### ============================================
+### 16.8 PHARMACY MANAGEMENT
+### ============================================
+
+### 16.8.1 Admin Creates Pharmacy
+POST {{baseUrl}}/pharmacy
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+    "name": "City Pharmacy",
+    "address": {
+        "line1": "456 Pharmacy Street",
+        "city": "New York",
+        "state": "NY",
+        "country": "USA",
+        "zip": "10001"
+    },
+    "phone": "1234567890",
+    "location": {
+        "lat": 40.7589,
+        "lng": -73.9851
+    }
+}
+
+### 16.5 Get All Pharmacies (Public)
+GET {{baseUrl}}/pharmacy?page=1&limit=10
+
+### ============================================
+### STEP 17: MAPPING & NAVIGATION
+### ============================================
+
+### 17.1 Get Route from Patient to Clinic
+GET {{baseUrl}}/mapping/route?from[lat]=40.7128&from[lng]=-74.0060&to[lat]=40.7589&to[lng]=-73.9851
+
+### 17.2 Get Nearby Clinics
+GET {{baseUrl}}/mapping/nearby?lat=40.7128&lng=-74.0060&radius=10
+
+### 17.3 Get Clinic Location
+GET {{baseUrl}}/mapping/clinic/CLINIC_ID_HERE
+
+### ============================================
+### STEP 18: FILE UPLOADS
+### ============================================
+
+### 18.1 Upload Profile Image
+POST {{baseUrl}}/upload/profile
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+Authorization: Bearer {{doctorToken}}
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="image"; filename="profile.jpg"
+Content-Type: image/jpeg
+
+< ./profile.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 18.2 Upload Doctor Documents
+POST {{baseUrl}}/upload/doctor-docs
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+Authorization: Bearer {{doctorToken}}
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="document"; filename="license.pdf"
+Content-Type: application/pdf
+
+< ./license.pdf
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 18.3 Upload Medical Record (Patient)
+POST {{baseUrl}}/upload/medical-record
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+Authorization: Bearer {{patientToken}}
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="prescription.pdf"
+Content-Type: application/pdf
+
+< ./prescription.pdf
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### ============================================
+### COMPLETE TESTING FLOW SEQUENCE
+### ============================================
+###
+### RECOMMENDED TESTING ORDER:
+###
+### STEP 0: Health Check
+###   → Verify server is running
+###
+### STEP 1: Authentication
+###   → 1.1 Admin Login (get adminToken)
+###   → 1.2 Doctor Registration (get doctorToken and doctorId)
+###   → 1.3 Patient Registration (get patientToken and patientId)
+###   → 1.4 Doctor Login (verify login works)
+###   → 1.5 Patient Login (verify login works)
+###
+### STEP 2: Admin Setup
+###   → 2.1-2.4 Create Specializations (Cardiology, Dermatology, Pediatrics, Orthopedics, etc.)
+###   → 2.5 Get Specializations (verify created - doctors will select from this list)
+###   → 2.4-2.6 Create Subscription Plans (BASIC, MEDIUM, FULL)
+###   → 2.7 Get Active Plans (verify created)
+###
+### STEP 3: Doctor Setup (Before Approval)
+###   → 3.1 Doctor Buys Subscription Plan
+###   → 3.2 Doctor Checks Subscription
+###   → 3.3 Doctor Completes Profile (title, bio, services, clinics, education, experience)
+###   → 3.4 Doctor Sets Availability
+###   → 3.5 Doctor Gets Availability (verify)
+###
+### STEP 4: Admin Approval
+###   → 4.1 Admin Views Pending Doctors
+###   → 4.2 Admin Approves Doctor
+###   → 4.3 Admin Views Approved Doctors (verify doctor is now visible)
+###
+### STEP 5: Patient Actions
+###   → 5.1 Patient Views Available Doctors (should see approved doctor)
+###   → 5.2-5.3 Patient Searches Doctors
+###   → 5.4 Patient Views Doctor Profile
+###   → 5.5 Patient Checks Available Time Slots
+###   → 5.6 Patient Checks Specific Slot
+###   → 5.7 Patient Creates Appointment Request
+###   → 5.8 Patient Creates Online Appointment (optional)
+###   → 5.9-5.10 Patient Views Appointments
+###
+### STEP 6: Doctor Actions
+###   → 6.1 Doctor Views Dashboard
+###   → 6.2 Doctor Gets Pending Appointments
+###   → 6.3 Doctor Accepts Appointment
+###   → 6.5 Doctor Gets Confirmed Appointments
+###   → 6.6 Doctor Gets Today's Appointments
+###
+### STEP 7: Payment Processing
+###   → 7.1 Process Appointment Payment (DUMMY)
+###   → 7.4 Patient Gets Payment History
+###
+### STEP 8: Appointment Management
+###   → 8.2 Doctor Completes Appointment (add notes)
+###   → 8.3 Patient Cancels Appointment (if needed)
+###
+### STEP 9: Patient Dashboard
+###   → 9.1 Patient Dashboard Statistics
+###   → 9.2 Patient Gets Appointment History
+###   → 9.4 Patient Updates Profile
+###
+### STEP 10: Medical Records
+###   → 10.1 Patient Creates Medical Record
+###   → 10.2 Patient Gets Medical Records
+###
+### STEP 11: Reviews & Favorites
+###   → 11.1 Patient Creates Review (after appointment completed)
+###   → 11.2 Get Doctor Reviews
+###   → 11.3 Patient Adds Doctor to Favorites
+###   → 11.4 Patient Gets Favorites
+###
+### STEP 12: Chat & Communication
+###   → IMPORTANT: Communication only available after:
+###     1. Doctor accepts appointment (status: CONFIRMED)
+###     2. Appointment time has started (current time >= appointment date + time)
+###   → 12.1 Patient Starts Conversation (requires appointmentId)
+###   → 12.2-12.3 Send Messages (requires appointmentId)
+###   → 12.4 Get Messages
+###   → 12.5-12.6 Send Messages with Attachments
+###   → 12.6.8-12.6.9 Get Unread Message Count
+###   → 12.6.10-12.6.11 Mark Messages as Read
+###   → 12.6.12 Admin Gets Doctors List for Chat (with unread counts)
+###   → All communication disabled for PENDING/REJECTED appointments
+###
+### STEP 13: Video & Audio Sessions
+###   → IMPORTANT: Video/Audio only available after:
+###     1. Appointment is CONFIRMED
+###     2. Appointment time has started
+###     3. Only for ONLINE booking type
+###   → 13.1-13.2 Start Video Session (doctor or patient can start)
+###   → 13.3 Get Session by Appointment
+###   → 13.4-13.5 End Session (doctor or patient can end)
+###   → All video/audio disabled for PENDING/REJECTED appointments or before appointment time
+###
+### STEP 14: Notifications
+###   → 14.1 Patient Gets Notifications
+###   → 14.3 Mark Notification as Read
+###
+### STEP 15: Admin Management
+###   → 15.1 Admin Dashboard
+###   → 15.2-15.7 Admin Views All Data
+###   → 15.8 Admin Updates User Status
+###   → 15.12 Admin Announcements System
+###     → 15.12.1-15.12.6 Create Announcements (Broadcast/Targeted)
+###     → 15.12.7-15.12.8 List/Get Announcements
+###     → 15.12.9 Update Announcement
+###     → 15.12.10 Get Read Status
+###     → 15.12.11 Delete Announcement
+###   → 15.13 Doctor Announcements
+###     → 15.13.1-15.13.2 Get Announcements & Unread Count
+###     → 15.13.3 Mark as Read
+###   → 15.9 Admin Announcements System
+###     → 15.9.1-15.9.6 Create Announcements (Broadcast/Targeted)
+###     → 15.9.7-15.9.8 List/Get Announcements
+###     → 15.9.9 Update Announcement
+###     → 15.9.10 Get Read Status
+###     → 15.9.11 Delete Announcement
+###   → 15.10 Doctor Announcements
+###     → 15.10.1-15.10.2 Get Announcements & Unread Count
+###     → 15.10.3 Mark as Read
+###
+### STEP 16: Products & Pharmacy
+###   → 16.1 Doctor Creates Product
+###   → 16.4 Admin Creates Pharmacy
+###
+### STEP 17: Mapping
+###   → 17.1-17.3 Mapping Features
+###
+### STEP 18: File Uploads
+###   → 18.1-18.3 Upload Files
 ###
 ### ============================================
-### VERIFICATION STEPS (Optional)
-### ============================================
-
-### Verify: Admin can see all plans
-GET http://localhost:5000/api/admin/subscription-plan
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTEwMTE4MCwiZXhwIjoxNzY1NzA1OTgwfQ.J2tVk9uC3LMse405HqSDerseF7BwQr-KtZbKTL8QUTg
-
-### Verify: Admin can see all doctors
-GET http://localhost:5000/api/admin/doctors
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTM1MmQzMThkZjcwZTk2ZGQ3MDYzMWYiLCJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NTEwMTE4MCwiZXhwIjoxNzY1NzA1OTgwfQ.J2tVk9uC3LMse405HqSDerseF7BwQr-KtZbKTL8QUTg
-
-### Verify: Public can see approved doctors with active subscriptions
-GET http://localhost:5000/api/doctor
-
-###
-### ============================================
-### COMPLETE EXAMPLE WITH REAL VALUES
-### ============================================
-### Below is an example with placeholder values
-### Replace these with actual values from your responses
-
-###
-### STEP 1: Admin Login
-# POST http://localhost:5000/api/auth/login
-# Content-Type: application/json
-#
-# {
-#     "email": "admin@gmail.com",
-#     "password": "123456"
-# }
-#
-# Response will have: { "data": { "token": "eyJ..." } }
-# Copy this token for next steps
-
-###
-### STEP 2: Admin Creates Plan
-# POST http://localhost:5000/api/admin/subscription-plan
-# Content-Type: application/json
-# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-#
-# {
-#     "name": "BASIC",
-#     "price": 100,
-#     "durationInDays": 30,
-#     "features": ["Feature 1", "Feature 2"]
-# }
-#
-# Response will have: { "data": { "_id": "6935..." } }
-# Copy this _id for STEP 5
-
-###
-### STEP 3: Doctor Registers
-# POST http://localhost:5000/api/auth/register
-# Content-Type: application/json
-#
-# {
-#     "fullName": "Dr. John Doe",
-#     "email": "doctor@gmail.com",
-#     "password": "123456",
-#     "role": "DOCTOR"
-# }
-#
-# Response will have: { "data": { "token": "eyJ...", "user": { "_id": "6935..." } } }
-# Copy token for STEP 5, copy _id for STEP 7
-
-###
-### STEP 4: Doctor Views Plans (Optional)
-# GET http://localhost:5000/api/admin/subscription-plan/active
-#
-# Response will show all active plans with their IDs
-
-###
-### STEP 5: Doctor Buys Plan
-# POST http://localhost:5000/api/doctor/buy-subscription
-# Content-Type: application/json
-# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (from STEP 3)
-#
-# {
-#     "planId": "69351801e43ca55642f854e2" (from STEP 2)
-# }
-
-###
-### STEP 6: Doctor Checks Subscription (Optional)
-# GET http://localhost:5000/api/doctor/my-subscription
-# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (from STEP 3)
-
-###
-### STEP 7: Admin Approves Doctor
-# POST http://localhost:5000/api/auth/approve-doctor
-# Content-Type: application/json
-# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (from STEP 1)
-#
-# {
-#     "doctorId": "69351801e43ca55642f854e2" (from STEP 3)
-# }

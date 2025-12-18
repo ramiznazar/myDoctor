@@ -14,7 +14,15 @@ exports.register = asyncHandler(async (req, res) => {
  */
 exports.login = asyncHandler(async (req, res) => {
   const result = await authService.loginUser(req.body);
-  res.json({ success: true, message: 'OK', data: result });
+  
+  // If there's a message (e.g., pending approval), include it in the response message
+  const message = result.message || 'OK';
+  
+  res.json({ 
+    success: true, 
+    message: message, 
+    data: result 
+  });
 });
 
 /**

@@ -26,7 +26,7 @@ const appointmentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW"],
+    enum: ["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW", "REJECTED"],
     default: null
   },
   paymentStatus: {
@@ -62,6 +62,10 @@ const appointmentSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
+    default: null
+  },
+  notes: {
+    type: String,
     default: null
   }
 }, {

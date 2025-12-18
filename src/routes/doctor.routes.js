@@ -61,5 +61,27 @@ router.get(
   asyncHandler(doctorController.listDoctors)
 );
 
+/**
+ * @route   GET /api/doctor/dashboard
+ * @desc    Get doctor dashboard statistics
+ * @access  Private (Doctor)
+ */
+router.get(
+  '/dashboard',
+  authGuard(['DOCTOR']),
+  asyncHandler(doctorController.getDashboard)
+);
+
+/**
+ * @route   GET /api/doctor/reviews
+ * @desc    Get doctor's reviews
+ * @access  Private (Doctor)
+ */
+router.get(
+  '/reviews',
+  authGuard(['DOCTOR']),
+  asyncHandler(doctorController.getReviews)
+);
+
 module.exports = router;
 

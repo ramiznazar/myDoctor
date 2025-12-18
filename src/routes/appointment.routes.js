@@ -57,5 +57,38 @@ router.get(
   asyncHandler(appointmentController.getById)
 );
 
+/**
+ * @route   POST /api/appointment/:id/accept
+ * @desc    Accept appointment (doctor only)
+ * @access  Private (Doctor)
+ */
+router.post(
+  '/:id/accept',
+  authGuard(['DOCTOR']),
+  asyncHandler(appointmentController.accept)
+);
+
+/**
+ * @route   POST /api/appointment/:id/reject
+ * @desc    Reject appointment (doctor only)
+ * @access  Private (Doctor)
+ */
+router.post(
+  '/:id/reject',
+  authGuard(['DOCTOR']),
+  asyncHandler(appointmentController.reject)
+);
+
+/**
+ * @route   POST /api/appointment/:id/cancel
+ * @desc    Cancel appointment (patient only)
+ * @access  Private (Patient)
+ */
+router.post(
+  '/:id/cancel',
+  authGuard(['PATIENT']),
+  asyncHandler(appointmentController.cancel)
+);
+
 module.exports = router;
 

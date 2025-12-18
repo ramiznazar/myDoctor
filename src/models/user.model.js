@@ -95,10 +95,22 @@ const userSchema = new mongoose.Schema({
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password') || !this.password) {
-    return next();
+  // Only hash password if it's been modified and is not already hashed
+  if (!this.isModified('password')) {
+    return next(); // Password not modified, skip
   }
   
+  if (!this.password) {
+    return next(); // No password to hash
+  }
+  
+  // Check if password is already hashed (starts with bcrypt hash identifier)
+  // bcrypt hashes always start with $2a$, $2b$, or $2y$ followed by cost parameter
+  if (this.password.startsWith('$2a$') || this.password.startsWith('$2b$') || this.password.startsWith('$2y$')) {
+    return next(); // Password is already hashed, skip hashing to prevent double-hashing
+  }
+  
+  // Password is plain text, hash it
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);

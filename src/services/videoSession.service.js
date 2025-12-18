@@ -1,5 +1,6 @@
 const VideoSession = require('../models/videoSession.model');
 const Appointment = require('../models/appointment.model');
+const { isAppointmentTimeStarted } = require('../middleware/appointmentAccess');
 
 /**
  * Start video session for appointment
@@ -13,8 +14,28 @@ const startSession = async (appointmentId) => {
     throw new Error('Appointment not found');
   }
 
+  // Check appointment status - must be CONFIRMED
+  if (appointment.status !== 'CONFIRMED') {
+    const statusMessages = {
+      'PENDING': 'Appointment is pending doctor acceptance. Video call will be available after the doctor accepts the appointment.',
+      'REJECTED': 'This appointment was rejected. Video call is not available.',
+      'CANCELLED': 'This appointment was cancelled. Video call is not available.',
+      'COMPLETED': 'This appointment has been completed. Video call is no longer available.',
+      'NO_SHOW': 'This appointment was marked as no-show. Video call is not available.'
+    };
+    throw new Error(statusMessages[appointment.status] || 'Video call is not available for this appointment status.');
+  }
+
   if (appointment.bookingType !== 'ONLINE') {
-    throw new Error('Appointment is not an online booking');
+    throw new Error('Video call is only available for online appointments');
+  }
+
+  // Check if appointment time has started
+  if (!isAppointmentTimeStarted(appointment.appointmentDate, appointment.appointmentTime)) {
+    const appointmentDateTime = new Date(appointment.appointmentDate);
+    const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
+    appointmentDateTime.setHours(hours, minutes, 0, 0);
+    throw new Error(`Video call is only available at the scheduled appointment time. Your appointment is scheduled for ${appointmentDateTime.toLocaleString()}.`);
   }
 
   // Check if session already exists

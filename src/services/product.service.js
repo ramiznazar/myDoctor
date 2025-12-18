@@ -1,5 +1,6 @@
 const Product = require('../models/product.model');
 const User = require('../models/user.model');
+const SubscriptionPlan = require('../models/subscriptionPlan.model');
 
 /**
  * Create product
@@ -24,7 +25,7 @@ const createProduct = async (data) => {
   } = data;
 
   // Verify seller exists
-  const seller = await User.findById(sellerId);
+  const seller = await User.findById(sellerId).populate('subscriptionPlan');
   if (!seller) {
     throw new Error('Seller not found');
   }
@@ -36,6 +37,35 @@ const createProduct = async (data) => {
 
   if (sellerType === 'PHARMACY' && seller.role !== 'PHARMACY') {
     throw new Error('Seller must be a pharmacy');
+  }
+
+  if (sellerType === 'ADMIN' && seller.role !== 'ADMIN') {
+    throw new Error('Seller must be an admin');
+  }
+
+  // For doctors: Check if they have FULL subscription plan
+  // Admin and Pharmacy don't need subscription check
+  if (sellerType === 'DOCTOR') {
+    if (!seller.subscriptionPlan) {
+      throw new Error('You must have an active subscription plan to create products');
+    }
+
+    // Check if subscription is active
+    const hasActiveSubscription = seller.subscriptionExpiresAt && 
+                                  new Date(seller.subscriptionExpiresAt) > new Date();
+    if (!hasActiveSubscription) {
+      throw new Error('Your subscription has expired. Please renew to create products');
+    }
+
+    // Check if subscription plan name is "FULL"
+    const plan = await SubscriptionPlan.findById(seller.subscriptionPlan);
+    if (!plan) {
+      throw new Error('Subscription plan not found');
+    }
+
+    if (plan.name.toUpperCase() !== 'FULL') {
+      throw new Error('Only doctors with FULL subscription plan can create products. Please upgrade to FULL plan.');
+    }
   }
 
   const product = await Product.create({
@@ -61,22 +91,51 @@ const createProduct = async (data) => {
  * Update product
  * @param {string} id - Product ID
  * @param {Object} data - Update data
+ * @param {string} userId - User ID (for authorization check)
  * @returns {Promise<Object>} Updated product
  */
-const updateProduct = async (id, data) => {
+const updateProduct = async (id, data, userId) => {
   const product = await Product.findById(id);
   
   if (!product) {
     throw new Error('Product not found');
   }
 
-  Object.keys(data).forEach(key => {
-    if (data[key] !== undefined) {
-      if (key === 'sellerType') {
-        product[key] = data[key].toUpperCase();
-      } else {
-        product[key] = data[key];
-      }
+  // Verify user owns the product (or is admin)
+  const seller = await User.findById(product.sellerId);
+  const currentUser = await User.findById(userId);
+  
+  // Admin can update any product, others can only update their own
+  if (currentUser.role !== 'ADMIN' && product.sellerId.toString() !== userId) {
+    throw new Error('You do not have permission to update this product');
+  }
+
+  // For doctors: Verify they still have FULL subscription
+  // Admin and Pharmacy don't need subscription check
+  if (product.sellerType === 'DOCTOR' && currentUser.role !== 'ADMIN') {
+    const seller = await User.findById(product.sellerId).populate('subscriptionPlan');
+    if (!seller || !seller.subscriptionPlan) {
+      throw new Error('You must have an active subscription plan to update products');
+    }
+
+    const hasActiveSubscription = seller.subscriptionExpiresAt && 
+                                  new Date(seller.subscriptionExpiresAt) > new Date();
+    if (!hasActiveSubscription) {
+      throw new Error('Your subscription has expired. Please renew to update products');
+    }
+
+    const plan = await SubscriptionPlan.findById(seller.subscriptionPlan);
+    if (!plan || plan.name.toUpperCase() !== 'FULL') {
+      throw new Error('Only doctors with FULL subscription plan can update products');
+    }
+  }
+
+  // Prevent changing sellerId or sellerType
+  const { sellerId, sellerType, ...updateData } = data;
+
+  Object.keys(updateData).forEach(key => {
+    if (updateData[key] !== undefined) {
+      product[key] = updateData[key];
     }
   });
 
@@ -180,13 +239,22 @@ const listProducts = async (filter = {}) => {
 /**
  * Delete product
  * @param {string} id - Product ID
+ * @param {string} userId - User ID (for authorization check)
  * @returns {Promise<Object>} Success message
  */
-const deleteProduct = async (id) => {
+const deleteProduct = async (id, userId) => {
   const product = await Product.findById(id);
   
   if (!product) {
     throw new Error('Product not found');
+  }
+
+  // Verify user owns the product (or is admin)
+  const currentUser = await User.findById(userId);
+  
+  // Admin can delete any product, others can only delete their own
+  if (currentUser.role !== 'ADMIN' && product.sellerId.toString() !== userId) {
+    throw new Error('You do not have permission to delete this product');
   }
 
   await Product.findByIdAndDelete(id);

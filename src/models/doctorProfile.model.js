@@ -139,6 +139,11 @@ const doctorProfileSchema = new mongoose.Schema({
     linkedin: { type: String, default: null },
     twitter: { type: String, default: null },
     website: { type: String, default: null }
+  },
+  // Computed flag to indicate profile completeness for dashboard access/visibility
+  profileCompleted: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

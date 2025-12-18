@@ -3,17 +3,27 @@ const productService = require('../services/product.service');
 
 /**
  * Create product
+ * Automatically sets sellerId and sellerType from authenticated user
+ * Doctors must have FULL subscription plan to create products
  */
 exports.create = asyncHandler(async (req, res) => {
-  const result = await productService.createProduct(req.body);
+  // Automatically set sellerId and sellerType from authenticated user
+  const productData = {
+    ...req.body,
+    sellerId: req.userId,
+    sellerType: req.userRole
+  };
+  
+  const result = await productService.createProduct(productData);
   res.json({ success: true, message: 'OK', data: result });
 });
 
 /**
  * Update product
+ * Doctors must have FULL subscription to update products
  */
 exports.update = asyncHandler(async (req, res) => {
-  const result = await productService.updateProduct(req.params.id, req.body);
+  const result = await productService.updateProduct(req.params.id, req.body, req.userId);
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -37,7 +47,7 @@ exports.list = asyncHandler(async (req, res) => {
  * Delete product
  */
 exports.delete = asyncHandler(async (req, res) => {
-  const result = await productService.deleteProduct(req.params.id);
+  const result = await productService.deleteProduct(req.params.id, req.userId);
   res.json({ success: true, message: 'OK', data: result });
 });
 
