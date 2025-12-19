@@ -18,10 +18,13 @@ exports.markRead = asyncHandler(async (req, res) => {
 });
 
 /**
- * List notifications for user
+ * List notifications for current user (from token)
  */
 exports.list = asyncHandler(async (req, res) => {
-  const userId = req.params.userId || req.userId;
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(400).json({ success: false, message: 'User ID is required' });
+  }
   const result = await notificationService.listNotifications(userId, req.query);
   res.json({ success: true, message: 'OK', data: result });
 });

@@ -3,23 +3,45 @@ const doctorService = require('./doctor.service');
 
 /**
  * Create review
+ * Supports both overall doctor review and per-appointment review
  * @param {Object} data - Review data
  * @returns {Promise<Object>} Created review
  */
 const createReview = async (data) => {
-  const { doctorId, patientId, rating, reviewText } = data;
+  const { doctorId, patientId, appointmentId, rating, reviewText, reviewType } = data;
 
-  // Check if patient already reviewed this doctor
-  const existingReview = await Review.findOne({ doctorId, patientId });
-  if (existingReview) {
-    throw new Error('You have already reviewed this doctor');
+  // Determine review type
+  const isAppointmentReview = !!appointmentId || reviewType === 'APPOINTMENT';
+  const finalReviewType = isAppointmentReview ? 'APPOINTMENT' : 'OVERALL';
+
+  if (isAppointmentReview) {
+    // Per-appointment review - check if already reviewed this appointment
+    if (appointmentId) {
+      const existingReview = await Review.findOne({ doctorId, patientId, appointmentId });
+      if (existingReview) {
+        throw new Error('You have already reviewed this appointment');
+      }
+    }
+  } else {
+    // Overall review - check if already reviewed this doctor (overall)
+    const existingReview = await Review.findOne({ 
+      doctorId, 
+      patientId, 
+      reviewType: 'OVERALL',
+      appointmentId: null 
+    });
+    if (existingReview) {
+      throw new Error('You have already given an overall review for this doctor');
+    }
   }
 
   const review = await Review.create({
     doctorId,
     patientId,
+    appointmentId: appointmentId || null,
     rating,
-    reviewText
+    reviewText,
+    reviewType: finalReviewType
   });
 
   // Update doctor rating after review is created

@@ -35,12 +35,12 @@ router.put(
 );
 
 /**
- * @route   GET /api/notification/:userId
- * @desc    List notifications for user
+ * @route   GET /api/notification
+ * @desc    List notifications for current user (from token)
  * @access  Private
  */
 router.get(
-  '/:userId',
+  '/',
   authGuard([]),
   validate(getNotificationsValidator),
   asyncHandler(notificationController.list)

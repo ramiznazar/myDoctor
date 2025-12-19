@@ -240,7 +240,7 @@ const getMessages = async (conversationId, options = {}) => {
  * Supports both doctor-patient (with appointment) and admin-doctor (without appointment) conversations
  * @param {string} doctorId - Doctor ID
  * @param {string} patientId - Patient ID (optional, for doctor-patient)
- * @param {string} adminId - Admin ID (optional, for admin-doctor)
+ * @param {string} adminId - Admin ID (optional, for admin-doctor - can be from token)
  * @param {string} appointmentId - Appointment ID (required for doctor-patient, optional for admin-doctor)
  * @returns {Promise<Object>} Conversation
  */
@@ -261,11 +261,15 @@ const getOrCreateConversation = async (doctorId, patientId, adminId, appointment
     ]);
 
     if (!admin || admin.role !== 'ADMIN') {
-      throw new Error('Admin not found');
+      const error = new Error('Admin not found');
+      error.statusCode = 404;
+      throw error;
     }
 
     if (!doctor || doctor.role !== 'DOCTOR') {
-      throw new Error('Doctor not found');
+      const error = new Error('Doctor not found');
+      error.statusCode = 404;
+      throw error;
     }
 
     let conversation = await Conversation.findOne({
@@ -299,7 +303,9 @@ const getOrCreateConversation = async (doctorId, patientId, adminId, appointment
     const appointment = await Appointment.findById(appointmentId);
     
     if (!appointment) {
-      throw new Error('Appointment not found');
+      const error = new Error('Appointment not found');
+      error.statusCode = 404;
+      throw error;
     }
 
     if (appointment.status !== 'CONFIRMED') {

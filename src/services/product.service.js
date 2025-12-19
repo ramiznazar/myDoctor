@@ -47,24 +47,32 @@ const createProduct = async (data) => {
   // Admin and Pharmacy don't need subscription check
   if (sellerType === 'DOCTOR') {
     if (!seller.subscriptionPlan) {
-      throw new Error('You must have an active subscription plan to create products');
+      const error = new Error('You must have an active subscription plan to create products');
+      error.statusCode = 403;
+      throw error;
     }
 
     // Check if subscription is active
     const hasActiveSubscription = seller.subscriptionExpiresAt && 
                                   new Date(seller.subscriptionExpiresAt) > new Date();
     if (!hasActiveSubscription) {
-      throw new Error('Your subscription has expired. Please renew to create products');
+      const error = new Error('Your subscription has expired. Please renew to create products');
+      error.statusCode = 403;
+      throw error;
     }
 
     // Check if subscription plan name is "FULL"
     const plan = await SubscriptionPlan.findById(seller.subscriptionPlan);
     if (!plan) {
-      throw new Error('Subscription plan not found');
+      const error = new Error('Subscription plan not found');
+      error.statusCode = 404;
+      throw error;
     }
 
     if (plan.name.toUpperCase() !== 'FULL') {
-      throw new Error('Only doctors with FULL subscription plan can create products. Please upgrade to FULL plan.');
+      const error = new Error('Only doctors with FULL subscription plan can create products. Please upgrade to FULL plan.');
+      error.statusCode = 403;
+      throw error;
     }
   }
 
@@ -107,7 +115,9 @@ const updateProduct = async (id, data, userId) => {
   
   // Admin can update any product, others can only update their own
   if (currentUser.role !== 'ADMIN' && product.sellerId.toString() !== userId) {
-    throw new Error('You do not have permission to update this product');
+    const error = new Error('You do not have permission to update this product');
+    error.statusCode = 403;
+    throw error;
   }
 
   // For doctors: Verify they still have FULL subscription
@@ -115,18 +125,24 @@ const updateProduct = async (id, data, userId) => {
   if (product.sellerType === 'DOCTOR' && currentUser.role !== 'ADMIN') {
     const seller = await User.findById(product.sellerId).populate('subscriptionPlan');
     if (!seller || !seller.subscriptionPlan) {
-      throw new Error('You must have an active subscription plan to update products');
+      const error = new Error('You must have an active subscription plan to update products');
+      error.statusCode = 403;
+      throw error;
     }
 
     const hasActiveSubscription = seller.subscriptionExpiresAt && 
                                   new Date(seller.subscriptionExpiresAt) > new Date();
     if (!hasActiveSubscription) {
-      throw new Error('Your subscription has expired. Please renew to update products');
+      const error = new Error('Your subscription has expired. Please renew to update products');
+      error.statusCode = 403;
+      throw error;
     }
 
     const plan = await SubscriptionPlan.findById(seller.subscriptionPlan);
     if (!plan || plan.name.toUpperCase() !== 'FULL') {
-      throw new Error('Only doctors with FULL subscription plan can update products');
+      const error = new Error('Only doctors with FULL subscription plan can update products');
+      error.statusCode = 403;
+      throw error;
     }
   }
 
@@ -254,7 +270,9 @@ const deleteProduct = async (id, userId) => {
   
   // Admin can delete any product, others can only delete their own
   if (currentUser.role !== 'ADMIN' && product.sellerId.toString() !== userId) {
-    throw new Error('You do not have permission to delete this product');
+    const error = new Error('You do not have permission to delete this product');
+    error.statusCode = 403;
+    throw error;
   }
 
   await Product.findByIdAndDelete(id);

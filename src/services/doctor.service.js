@@ -291,6 +291,23 @@ const buySubscriptionPlan = async (doctorId, planId) => {
 
   await doctor.save();
 
+  // Create transaction record for subscription purchase
+  const Transaction = require('../models/transaction.model');
+  try {
+    await Transaction.create({
+      userId: doctorId,
+      relatedSubscriptionId: planId,
+      amount: plan.price,
+      currency: 'USD',
+      status: 'SUCCESS',
+      provider: 'DUMMY',
+      providerReference: `SUB-${Date.now()}-${doctorId}`
+    });
+  } catch (transactionError) {
+    // Log error but don't fail subscription purchase
+    console.error('Failed to create transaction record:', transactionError);
+  }
+
   // Populate plan details
   await doctor.populate('subscriptionPlan', 'name price durationInDays features status');
   

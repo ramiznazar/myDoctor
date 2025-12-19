@@ -11,6 +11,11 @@ const reviewSchema = new mongoose.Schema({
     ref: "User",
     default: null
   },
+  appointmentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Appointment",
+    default: null
+  },
   rating: {
     type: Number,
     min: 1,
@@ -20,6 +25,11 @@ const reviewSchema = new mongoose.Schema({
   reviewText: {
     type: String,
     default: null
+  },
+  reviewType: {
+    type: String,
+    enum: ["OVERALL", "APPOINTMENT"],
+    default: "OVERALL"
   }
 }, {
   timestamps: true

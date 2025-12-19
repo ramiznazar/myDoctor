@@ -23,9 +23,22 @@ exports.updateStatus = asyncHandler(async (req, res) => {
 
 /**
  * List appointments with filtering
+ * Automatically filters by doctorId for doctors and patientId for patients
  */
 exports.list = asyncHandler(async (req, res) => {
-  const result = await appointmentService.listAppointments(req.query);
+  // Auto-filter by user role
+  const filter = { ...req.query };
+  
+  if (req.userRole === 'DOCTOR') {
+    // Doctors see only their appointments
+    filter.doctorId = req.userId;
+  } else if (req.userRole === 'PATIENT') {
+    // Patients see only their appointments
+    filter.patientId = req.userId;
+  }
+  // Admin can see all appointments (no auto-filter)
+  
+  const result = await appointmentService.listAppointments(filter);
   res.json({ success: true, message: 'OK', data: result });
 });
 

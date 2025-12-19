@@ -10,10 +10,23 @@ exports.upsertProfile = asyncHandler(async (req, res) => {
 });
 
 /**
- * Get doctor profile by user ID
+ * Get doctor profile (uses token for authenticated doctors)
  */
 exports.getProfile = asyncHandler(async (req, res) => {
-  const userId = req.params.id || req.userId;
+  // If user is authenticated doctor, use their ID from token
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(400).json({ success: false, message: 'User ID is required' });
+  }
+  const result = await doctorService.getDoctorProfile(userId);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+/**
+ * Get doctor profile by user ID (public access)
+ */
+exports.getProfileById = asyncHandler(async (req, res) => {
+  const userId = req.params.id;
   const result = await doctorService.getDoctorProfile(userId);
   res.json({ success: true, message: 'OK', data: result });
 });

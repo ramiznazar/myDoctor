@@ -88,6 +88,11 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "DoctorProfile",
     default: null
+  },
+  balance: {
+    type: Number,
+    default: 0,
+    min: 0
   }
 }, {
   timestamps: true

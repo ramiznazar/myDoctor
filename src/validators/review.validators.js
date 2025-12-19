@@ -2,13 +2,16 @@ const { z } = require("zod");
 
 /**
  * Create review validator
+ * Supports both overall review and per-appointment review
  */
 const createReviewValidator = z.object({
   body: z.object({
     doctorId: z.string().min(1, "Doctor ID is required"),
-    patientId: z.string().min(1, "Patient ID is required"),
+    patientId: z.string().min(1, "Patient ID is required").optional(), // Optional if from token
+    appointmentId: z.string().min(1).optional(), // Required for appointment-specific review
     rating: z.number().min(1, "Rating must be at least 1").max(5, "Rating must be at most 5"),
-    reviewText: z.string().optional()
+    reviewText: z.string().optional(),
+    reviewType: z.enum(["OVERALL", "APPOINTMENT"]).optional() // Auto-determined if appointmentId provided
   })
 });
 

@@ -24,10 +24,10 @@ const markNotificationReadValidator = z.object({
 
 /**
  * Get notifications validator (for listing)
+ * userId is now fetched from token, not from query
  */
 const getNotificationsValidator = z.object({
   query: z.object({
-    userId: z.string().optional(),
     type: z.enum(["APPOINTMENT", "PAYMENT", "SYSTEM", "SUBSCRIPTION", "CHAT", "OTHER"]).optional(),
     isRead: z.string().transform((val) => val === "true").optional(),
     page: z.string().regex(/^\d+$/).transform(Number).optional().default("1"),

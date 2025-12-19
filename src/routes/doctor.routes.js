@@ -19,13 +19,23 @@ router.put(
 );
 
 /**
+ * @route   GET /api/doctor/profile
+ * @desc    Get doctor profile (uses token for authenticated doctors, or accepts id for public access)
+ * @access  Public (with id) or Private (Doctor - uses token)
+ */
+router.get(
+  '/profile',
+  asyncHandler(doctorController.getProfile)
+);
+
+/**
  * @route   GET /api/doctor/profile/:id
- * @desc    Get doctor profile by user ID
+ * @desc    Get doctor profile by user ID (public access)
  * @access  Public
  */
 router.get(
   '/profile/:id',
-  asyncHandler(doctorController.getProfile)
+  asyncHandler(doctorController.getProfileById)
 );
 
 /**

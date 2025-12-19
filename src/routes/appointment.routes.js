@@ -37,6 +37,9 @@ router.put(
 /**
  * @route   GET /api/appointment
  * @desc    List appointments with filtering
+ *         - Doctors: automatically filters by their doctorId from token
+ *         - Patients: automatically filters by their patientId from token
+ *         - Admin: can see all appointments
  * @access  Private
  */
 router.get(

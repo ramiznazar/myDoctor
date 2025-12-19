@@ -52,22 +52,24 @@ const getConversationMessagesValidator = z.object({
 /**
  * Create or get conversation validator
  * Supports both doctor-patient (with appointment) and admin-doctor (without appointment) conversations
+ * adminId is optional in body as it will be fetched from token for ADMIN users
  */
 const createOrGetConversationValidator = z.object({
   body: z.object({
     doctorId: z.string().min(1, "Doctor ID is required"),
     patientId: z.string().min(1).optional(), // Required for doctor-patient chat
-    adminId: z.string().min(1).optional(), // Required for admin-doctor chat
+    adminId: z.string().min(1).optional(), // Optional - will be fetched from token for ADMIN users
     appointmentId: z.string().min(1).optional() // Required for doctor-patient chat
   }).refine(
     (data) => {
       // Either admin-doctor OR doctor-patient must be specified
-      const isAdminDoctor = !!data.adminId;
+      // adminId can be in body or will be from token
       const isDoctorPatient = !!data.patientId && !!data.appointmentId;
-      return isAdminDoctor || isDoctorPatient;
+      // For admin-doctor, adminId will be from token, so we just need doctorId
+      return true; // Validation will be done in service based on user role
     },
     {
-      message: "Either adminId (for admin-doctor chat) or patientId+appointmentId (for doctor-patient chat) must be provided"
+      message: "Either patientId+appointmentId (for doctor-patient chat) or doctorId (for admin-doctor chat) must be provided"
     }
   )
 });

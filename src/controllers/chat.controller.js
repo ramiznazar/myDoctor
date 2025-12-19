@@ -24,9 +24,12 @@ exports.getMessages = asyncHandler(async (req, res) => {
 /**
  * Get or create conversation
  * Supports both doctor-patient (with appointment) and admin-doctor (without appointment) conversations
+ * adminId is fetched from token if user is ADMIN
  */
 exports.getOrCreateConversation = asyncHandler(async (req, res) => {
-  const { doctorId, patientId, adminId, appointmentId } = req.body;
+  const { doctorId, patientId, appointmentId } = req.body;
+  // Fetch adminId from token if user is ADMIN
+  const adminId = req.userRole === 'ADMIN' ? req.userId : req.body.adminId;
   const result = await chatService.getOrCreateConversation(doctorId, patientId, adminId, appointmentId);
   res.json({ success: true, message: 'OK', data: result });
 });

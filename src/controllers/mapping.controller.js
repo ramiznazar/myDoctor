@@ -63,3 +63,5 @@ exports.getClinicLocation = asyncHandler(async (req, res) => {
 
 
 
+
+
