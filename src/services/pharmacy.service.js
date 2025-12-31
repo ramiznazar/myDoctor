@@ -73,6 +73,18 @@ const getPharmacy = async (id) => {
 };
 
 /**
+ * Get pharmacy by owner ID
+ * @param {string} ownerId - Owner User ID
+ * @returns {Promise<Object|null>} Pharmacy or null if not found
+ */
+const getPharmacyByOwnerId = async (ownerId) => {
+  const pharmacy = await Pharmacy.findOne({ ownerId, isActive: true })
+    .populate('ownerId', 'fullName email phone profileImage');
+  
+  return pharmacy;
+};
+
+/**
  * List pharmacies with filtering
  * @param {Object} filter - Filter criteria
  * @returns {Promise<Object>} Pharmacies and pagination info
@@ -89,7 +101,12 @@ const listPharmacies = async (filter = {}) => {
   const query = { isActive: true };
 
   if (ownerId) {
-    query.ownerId = ownerId;
+    // Handle both single ownerId and $in operator for multiple ownerIds
+    if (typeof ownerId === 'object' && ownerId.$in) {
+      query.ownerId = { $in: ownerId.$in };
+    } else {
+      query.ownerId = ownerId;
+    }
   }
 
   if (city) {
@@ -146,6 +163,7 @@ module.exports = {
   createPharmacy,
   updatePharmacy,
   getPharmacy,
+  getPharmacyByOwnerId,
   listPharmacies,
   deletePharmacy
 };

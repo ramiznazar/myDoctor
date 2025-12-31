@@ -44,11 +44,11 @@ router.post(
 /**
  * @route   POST /api/upload/product
  * @desc    Upload product images
- * @access  Private (Doctor, Pharmacy)
+ * @access  Private (Admin, Doctor, Pharmacy)
  */
 router.post(
   '/product',
-  authGuard(['DOCTOR', 'PHARMACY']),
+  authGuard(['ADMIN', 'DOCTOR', 'PHARMACY']),
   uploadMultipleImages('product', 10),
   asyncHandler(uploadController.uploadMultipleFiles)
 );

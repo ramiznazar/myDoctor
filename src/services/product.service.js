@@ -25,18 +25,28 @@ const createProduct = async (data) => {
   } = data;
 
   // Verify seller exists
+  if (!sellerId) {
+    const error = new Error('Seller ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  
   const seller = await User.findById(sellerId).populate('subscriptionPlan');
   if (!seller) {
-    throw new Error('Seller not found');
+    const error = new Error(`Seller not found with ID: ${sellerId}`);
+    error.statusCode = 404;
+    throw error;
   }
 
   // Verify seller type matches user role
+  // Exception: Admin and Doctor can create pharmacy products (sellerType = PHARMACY)
   if (sellerType === 'DOCTOR' && seller.role !== 'DOCTOR') {
     throw new Error('Seller must be a doctor');
   }
 
-  if (sellerType === 'PHARMACY' && seller.role !== 'PHARMACY') {
-    throw new Error('Seller must be a pharmacy');
+  // Allow ADMIN and DOCTOR to create pharmacy products
+  if (sellerType === 'PHARMACY' && seller.role !== 'PHARMACY' && seller.role !== 'ADMIN' && seller.role !== 'DOCTOR') {
+    throw new Error('Only pharmacy users, admins, or doctors can create pharmacy products');
   }
 
   if (sellerType === 'ADMIN' && seller.role !== 'ADMIN') {
@@ -198,7 +208,7 @@ const listProducts = async (filter = {}) => {
   const query = { isActive: true };
 
   if (sellerId) {
-    query.sellerId = sellerId;
+    query.sellerId = sellerId; // Mongoose automatically handles string to ObjectId conversion
   }
 
   if (sellerType) {

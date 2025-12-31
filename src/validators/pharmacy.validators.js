@@ -2,12 +2,17 @@ const { z } = require("zod");
 
 /**
  * Create pharmacy validator
+ * ownerId is optional for doctors (auto-set to their userId)
  */
 const createPharmacyValidator = z.object({
   body: z.object({
-    ownerId: z.string().min(1, "Owner ID is required"),
+    ownerId: z.string().min(1).optional(), // Optional - auto-set for doctors
     name: z.string().min(1, "Pharmacy name is required"),
-    logo: z.string().url("Invalid logo URL").optional(),
+    logo: z.union([
+      z.string().url("Invalid logo URL"),
+      z.string().regex(/^\/uploads\//, "Logo must be a valid URL or upload path"),
+      z.literal("")
+    ]).optional().transform((val) => val === "" ? undefined : val),
     address: z.object({
       line1: z.string().optional(),
       line2: z.string().optional(),
@@ -16,10 +21,24 @@ const createPharmacyValidator = z.object({
       country: z.string().optional(),
       zip: z.string().optional()
     }).optional(),
-    phone: z.string().optional(),
+    phone: z.string().optional().or(z.literal("").transform(() => undefined)),
     location: z.object({
-      lat: z.number().optional(),
-      lng: z.number().optional()
+      lat: z.preprocess(
+        (val) => {
+          if (val === "" || val === null || val === undefined) return undefined;
+          const num = typeof val === "string" ? parseFloat(val) : val;
+          return isNaN(num) ? undefined : num;
+        },
+        z.number().optional()
+      ),
+      lng: z.preprocess(
+        (val) => {
+          if (val === "" || val === null || val === undefined) return undefined;
+          const num = typeof val === "string" ? parseFloat(val) : val;
+          return isNaN(num) ? undefined : num;
+        },
+        z.number().optional()
+      )
     }).optional(),
     isActive: z.boolean().optional()
   })

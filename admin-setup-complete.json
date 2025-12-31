@@ -1,0 +1,22 @@
+{
+  "admin": {
+    "id": "694a736aea4e0ba2cadd34d3",
+    "email": "admin@mydoctor.com",
+    "fullName": "Admin User",
+    "role": "ADMIN",
+    "status": "APPROVED"
+  },
+  "credentials": {
+    "email": "admin@mydoctor.com",
+    "password": "admin123456"
+  },
+  "token": {
+    "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTRhNzM2YWVhNGUwYmEyY2FkZDM0ZDMiLCJlbWFpbCI6ImFkbWluQG15ZG9jdG9yLmNvbSIsInJvbGUiOiJBRE1JTiIsImlhdCI6MTc2NjQ4Njg5MCwiZXhwIjoxNzY3MDkxNjkwfQ.h4Im9pHi_XsRSRPBGzlPP-nHZjZcoK2LqpvbfFiPG2I",
+    "expiresIn": "7d",
+    "generatedAt": "2025-12-23T10:48:10.906Z"
+  },
+  "database": {
+    "name": "mydoctore",
+    "connection": "mongodb://localhost:27017/mydoctore"
+  }
+}

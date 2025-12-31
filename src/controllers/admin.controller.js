@@ -47,11 +47,51 @@ exports.getAllProducts = asyncHandler(async (req, res) => {
 
 /**
  * Get all pharmacies
+ * For admin panel, optionally filter by owner role
  */
 exports.getAllPharmacies = asyncHandler(async (req, res) => {
   const pharmacyService = require('../services/pharmacy.service');
-  const result = await pharmacyService.listPharmacies(req.query);
-  res.json({ success: true, message: 'OK', data: result });
+  const User = require('../models/user.model');
+  
+  // If ownerRole filter is provided, filter at database level
+  if (req.query.ownerRole) {
+    // Get all users with the specified role
+    const usersWithRole = await User.find({ role: req.query.ownerRole }).select('_id');
+    const userIds = usersWithRole.map(u => u._id);
+    
+    // If no users with that role exist, return empty result
+    if (userIds.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'OK', 
+        data: {
+          pharmacies: [],
+          pagination: {
+            page: parseInt(req.query.page) || 1,
+            limit: parseInt(req.query.limit) || 10,
+            total: 0,
+            pages: 0
+          }
+        }
+      });
+    }
+    
+    // Add ownerId filter to query using $in operator
+    const modifiedQuery = {
+      ...req.query,
+      ownerId: { $in: userIds }
+    };
+    
+    // Remove ownerRole from query as it's not a pharmacy field
+    delete modifiedQuery.ownerRole;
+    
+    const result = await pharmacyService.listPharmacies(modifiedQuery);
+    res.json({ success: true, message: 'OK', data: result });
+  } else {
+    // No role filter, return all pharmacies
+    const result = await pharmacyService.listPharmacies(req.query);
+    res.json({ success: true, message: 'OK', data: result });
+  }
 });
 
 /**

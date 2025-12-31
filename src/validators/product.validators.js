@@ -8,6 +8,7 @@ const createProductValidator = z.object({
   body: z.object({
     sellerId: z.string().min(1).optional(), // Auto-set from req.userId
     sellerType: z.enum(["DOCTOR", "PHARMACY", "ADMIN"]).optional(), // Auto-set from req.userRole
+    pharmacyId: z.string().min(1).optional(), // Optional - used to link product to pharmacy (for admin/doctor)
     name: z.string().min(1, "Product name is required"),
     price: z.number().nonnegative("Price must be non-negative"),
     stock: z.number().int().nonnegative("Stock must be a non-negative integer"),

@@ -102,8 +102,12 @@ const listBlogPosts = async (filter = {}) => {
     query.isPublished = isPublished === true || isPublished === 'true';
   }
 
-  if (tags && tags.length > 0) {
-    query.tags = { $in: tags };
+  if (tags) {
+    // Handle both array and comma-separated string
+    const tagsArray = Array.isArray(tags) ? tags : (typeof tags === 'string' ? tags.split(',').map(t => t.trim()).filter(t => t) : []);
+    if (tagsArray.length > 0) {
+      query.tags = { $in: tagsArray };
+    }
   }
 
   if (search) {
