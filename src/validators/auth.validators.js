@@ -57,10 +57,43 @@ const refreshTokenValidator = z.object({
   })
 });
 
+/**
+ * Request password reset validator
+ */
+const requestPasswordResetValidator = z.object({
+  body: z.object({
+    email: z.string().email("Invalid email format")
+  })
+});
+
+/**
+ * Verify password reset code validator
+ */
+const verifyPasswordResetCodeValidator = z.object({
+  body: z.object({
+    email: z.string().email("Invalid email format"),
+    code: z.string().length(6, "Verification code must be 6 digits").regex(/^\d+$/, "Verification code must contain only digits")
+  })
+});
+
+/**
+ * Reset password validator
+ */
+const resetPasswordValidator = z.object({
+  body: z.object({
+    email: z.string().email("Invalid email format"),
+    code: z.string().length(6, "Verification code must be 6 digits").regex(/^\d+$/, "Verification code must contain only digits"),
+    newPassword: z.string().min(6, "New password must be at least 6 characters")
+  })
+});
+
 module.exports = {
   registerValidator,
   loginValidator,
   adminApproveDoctorValidator,
   changePasswordValidator,
-  refreshTokenValidator
+  refreshTokenValidator,
+  requestPasswordResetValidator,
+  verifyPasswordResetCodeValidator,
+  resetPasswordValidator
 };

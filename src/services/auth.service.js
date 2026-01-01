@@ -2,7 +2,9 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/user.model');
 const DoctorProfile = require('../models/doctorProfile.model');
 const Specialization = require('../models/specialization.model');
+const PasswordReset = require('../models/passwordReset.model');
 const { generateToken } = require('../utils/jwt');
+const { sendPasswordResetOTP, sendPasswordResetSuccess } = require('./email.service');
 
 /**
  * Register a new user (DOCTOR or PATIENT)
@@ -233,10 +235,120 @@ const refreshToken = async (token) => {
   }
 };
 
+/**
+ * Request password reset - Send OTP to email
+ * @param {string} email - User email
+ * @returns {Promise<Object>} Success message
+ */
+const requestPasswordReset = async (email) => {
+  // Find user by email
+  const user = await User.findOne({ email: email.toLowerCase() });
+  
+  if (!user) {
+    throw new Error('Email is not registered');
+  }
+
+  // Generate 6-digit OTP code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+  // Delete any existing reset codes for this email
+  await PasswordReset.deleteMany({ email: email.toLowerCase() });
+
+  // Create new password reset record
+  await PasswordReset.create({
+    email: email.toLowerCase(),
+    code,
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+  });
+
+  // Send OTP via email
+  await sendPasswordResetOTP(email.toLowerCase(), code, user.fullName);
+
+  return { message: 'Verification code has been sent to your email.' };
+};
+
+/**
+ * Verify password reset OTP code
+ * @param {string} email - User email
+ * @param {string} code - OTP code
+ * @returns {Promise<Object>} Success message with reset token
+ */
+const verifyPasswordResetCode = async (email, code) => {
+  // Find valid reset record
+  const resetRecord = await PasswordReset.findOne({
+    email: email.toLowerCase(),
+    code,
+    expiresAt: { $gt: new Date() }, // Not expired
+    used: false
+  });
+
+  if (!resetRecord) {
+    throw new Error('Invalid or expired verification code');
+  }
+
+  // Mark as verified
+  resetRecord.verified = true;
+  await resetRecord.save();
+
+  // Return success (code is verified, ready for password reset)
+  return { message: 'Verification code is valid', verified: true };
+};
+
+/**
+ * Reset password with verified code
+ * @param {string} email - User email
+ * @param {string} code - Verified OTP code
+ * @param {string} newPassword - New password
+ * @returns {Promise<Object>} Success message
+ */
+const resetPassword = async (email, code, newPassword) => {
+  // Find verified reset record
+  const resetRecord = await PasswordReset.findOne({
+    email: email.toLowerCase(),
+    code,
+    verified: true,
+    expiresAt: { $gt: new Date() }, // Not expired
+    used: false
+  });
+
+  if (!resetRecord) {
+    throw new Error('Invalid or expired verification code. Please request a new code.');
+  }
+
+  // Find user
+  const user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  // Hash new password
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+  // Update user password
+  user.password = hashedPassword;
+  await user.save();
+
+  // Mark reset record as used
+  resetRecord.used = true;
+  await resetRecord.save();
+
+  // Delete all reset records for this email
+  await PasswordReset.deleteMany({ email: email.toLowerCase() });
+
+  // Send success email
+  await sendPasswordResetSuccess(email.toLowerCase(), user.fullName);
+
+  return { message: 'Password reset successfully' };
+};
+
 module.exports = {
   registerUser,
   loginUser,
   approveDoctor,
   changePassword,
-  refreshToken
+  refreshToken,
+  requestPasswordReset,
+  verifyPasswordResetCode,
+  resetPassword
 };

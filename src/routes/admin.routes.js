@@ -2,8 +2,11 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
 const adminController = require('../controllers/admin.controller');
+const orderController = require('../controllers/order.controller');
 const authGuard = require('../middleware/authGuard');
 const asyncHandler = require('../middleware/asyncHandler');
+const validate = require('../middleware/validate');
+const { filterOrdersValidator } = require('../validators/order.validators');
 
 /**
  * @route   GET /admin/dashboard
@@ -168,6 +171,18 @@ router.get(
   '/doctors/chat',
   authGuard(['ADMIN']),
   asyncHandler(adminController.getDoctorsForChat)
+);
+
+/**
+ * @route   GET /admin/orders
+ * @desc    Get all orders (admin only)
+ * @access  Private (Admin only)
+ */
+router.get(
+  '/orders',
+  authGuard(['ADMIN']),
+  validate(filterOrdersValidator),
+  asyncHandler(orderController.getAllOrders)
 );
 
 module.exports = router;

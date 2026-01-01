@@ -21,6 +21,11 @@ const transactionSchema = new mongoose.Schema({
     ref: "Product",
     default: null
   },
+  relatedOrderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Order",
+    default: null
+  },
   amount: {
     type: Number,
     default: null

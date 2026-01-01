@@ -49,3 +49,29 @@ exports.refreshToken = asyncHandler(async (req, res) => {
   const result = await authService.refreshToken(req.body.refreshToken);
   res.json({ success: true, message: 'OK', data: result });
 });
+
+/**
+ * Request password reset - Send OTP
+ */
+exports.requestPasswordReset = asyncHandler(async (req, res) => {
+  const result = await authService.requestPasswordReset(req.body.email);
+  res.json({ success: true, message: result.message });
+});
+
+/**
+ * Verify password reset code
+ */
+exports.verifyPasswordResetCode = asyncHandler(async (req, res) => {
+  const { email, code } = req.body;
+  const result = await authService.verifyPasswordResetCode(email, code);
+  res.json({ success: true, message: result.message, data: result });
+});
+
+/**
+ * Reset password
+ */
+exports.resetPassword = asyncHandler(async (req, res) => {
+  const { email, code, newPassword } = req.body;
+  const result = await authService.resetPassword(email, code, newPassword);
+  res.json({ success: true, message: result.message });
+});

@@ -28,13 +28,24 @@ router.post(
 
 /**
  * @route   POST /api/payment/product
- * @desc    Process product payment
+ * @desc    Process product payment (single product - legacy)
  * @access  Private
  */
 router.post(
   '/product',
   authGuard([]),
   asyncHandler(paymentController.processProductPayment)
+);
+
+/**
+ * @route   POST /api/payment/order
+ * @desc    Process order payment
+ * @access  Private
+ */
+router.post(
+  '/order',
+  authGuard([]),
+  asyncHandler(paymentController.processOrderPayment)
 );
 
 /**

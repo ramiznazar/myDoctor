@@ -36,5 +36,6 @@ router.use('/patient', require('./patient.routes'));
 router.use('/announcements', require('./announcement.routes'));
 router.use('/weekly-schedule', require('./weeklySchedule.routes'));
 router.use('/balance', require('./balance.routes'));
+router.use('/orders', require('./order.routes'));
 
 module.exports = router;

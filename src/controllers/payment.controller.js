@@ -30,7 +30,7 @@ exports.processSubscriptionPayment = asyncHandler(async (req, res) => {
 });
 
 /**
- * Process product payment
+ * Process product payment (single product - legacy)
  */
 exports.processProductPayment = asyncHandler(async (req, res) => {
   const { productId, amount, paymentMethod } = req.body;
@@ -41,6 +41,18 @@ exports.processProductPayment = asyncHandler(async (req, res) => {
     paymentMethod || 'DUMMY'
   );
   res.json({ success: true, message: 'Product payment processed successfully', data: result });
+});
+
+/**
+ * Process order payment
+ */
+exports.processOrderPayment = asyncHandler(async (req, res) => {
+  const { orderId, paymentMethod } = req.body;
+  const result = await paymentService.processOrderPayment(
+    orderId,
+    paymentMethod || 'DUMMY'
+  );
+  res.json({ success: true, message: 'Order payment processed successfully', data: result });
 });
 
 /**
