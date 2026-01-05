@@ -26,6 +26,7 @@
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
     "express-rate-limit": "^8.2.1",
+    "getstream": "^8.8.0",
     "helmet": "^8.1.0",
     "ioredis": "^5.3.2",
     "jsonwebtoken": "^9.0.3",
@@ -33,6 +34,7 @@
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^7.0.12",
     "socket.io": "^4.7.5",
+    "stream-chat": "^9.27.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {

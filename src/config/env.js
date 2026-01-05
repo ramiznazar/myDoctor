@@ -3,6 +3,9 @@ dotenv.config();
 
 const REQUIRED = ["MONGO_URI", "JWT_SECRET", "REFRESH_TOKEN_SECRET", "PORT"];
 
+// Optional but recommended for video calls
+const RECOMMENDED = ["STREAM_API_KEY", "STREAM_API_SECRET"];
+
 REQUIRED.forEach((key) => {
   if (!process.env[key]) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -43,4 +46,14 @@ module.exports = {
   // video
   WEBRTC_API_KEY: process.env.WEBRTC_API_KEY,
   WEBRTC_SECRET: process.env.WEBRTC_SECRET,
+
+  // Stream Video SDK
+  STREAM_API_KEY: process.env.STREAM_API_KEY,
+  STREAM_API_SECRET: process.env.STREAM_API_SECRET,
 };
+
+// Warn if Stream credentials are missing (but don't fail startup)
+if (!process.env.STREAM_API_KEY || !process.env.STREAM_API_SECRET) {
+  console.warn('⚠️  WARNING: Stream API credentials are not set. Video calling will not work.');
+  console.warn('⚠️  Please set STREAM_API_KEY and STREAM_API_SECRET in your .env file');
+}

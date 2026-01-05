@@ -82,14 +82,19 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // Log error in development
-  if (process.env.NODE_ENV === 'development') {
-    console.error('Error:', {
-      message: err.message,
-      stack: err.stack,
-      statusCode,
-      url: req.url,
-      method: req.method
-    });
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production') {
+    console.error('\n❌ ========== ERROR HANDLER ==========');
+    console.error('❌ Error Message:', err.message);
+    console.error('❌ Error Name:', err.name);
+    console.error('❌ Status Code:', statusCode);
+    console.error('❌ Request URL:', req.url);
+    console.error('❌ Request Method:', req.method);
+    console.error('❌ Request Body:', req.body);
+    console.error('❌ Error Stack:', err.stack);
+    if (err.response) {
+      console.error('❌ Error Response:', err.response);
+    }
+    console.error('❌ ====================================\n');
   }
 
   // Send error response
