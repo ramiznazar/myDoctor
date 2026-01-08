@@ -13,7 +13,8 @@ exports.create = asyncHandler(async (req, res) => {
  * Mark notification as read
  */
 exports.markRead = asyncHandler(async (req, res) => {
-  const result = await notificationService.markNotificationRead(req.params.id);
+  const userId = req.userId; // Get userId from token
+  const result = await notificationService.markNotificationRead(req.params.id, userId);
   res.json({ success: true, message: 'OK', data: result });
 });
 

@@ -30,13 +30,19 @@ const createNotification = async (data) => {
 /**
  * Mark notification as read
  * @param {string} notificationId - Notification ID
+ * @param {string} userId - User ID (to verify ownership)
  * @returns {Promise<Object>} Updated notification
  */
-const markNotificationRead = async (notificationId) => {
+const markNotificationRead = async (notificationId, userId = null) => {
   const notification = await Notification.findById(notificationId);
   
   if (!notification) {
     throw new Error('Notification not found');
+  }
+
+  // Verify ownership if userId is provided
+  if (userId && notification.userId.toString() !== userId.toString()) {
+    throw new Error('Unauthorized: Notification does not belong to this user');
   }
 
   notification.isRead = true;

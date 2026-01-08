@@ -18,9 +18,14 @@ const createNotificationValidator = z.object({
  */
 const markNotificationReadValidator = z.object({
   params: z.object({
-    notificationId: z.string().min(1, "Notification ID is required")
-  })
-});
+    id: z.string({
+      required_error: "Notification ID is required",
+      invalid_type_error: "Notification ID must be a string"
+    }).min(1, "Notification ID cannot be empty")
+  }),
+  body: z.any().optional(),
+  query: z.any().optional()
+}).passthrough();
 
 /**
  * Get notifications validator (for listing)
