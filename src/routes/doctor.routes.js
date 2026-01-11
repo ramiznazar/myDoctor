@@ -20,12 +20,11 @@ router.put(
 
 /**
  * @route   GET /api/doctor/profile
- * @desc    Get doctor profile (uses token for authenticated doctors)
- * @access  Private (Doctor - uses token)
+ * @desc    Get doctor profile (uses token for authenticated doctors, or accepts id for public access)
+ * @access  Public (with id) or Private (Doctor - uses token)
  */
 router.get(
   '/profile',
-  authGuard(['DOCTOR']),
   asyncHandler(doctorController.getProfile)
 );
 
