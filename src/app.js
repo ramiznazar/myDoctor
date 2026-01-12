@@ -21,8 +21,22 @@ app.use(cors({
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from uploads directory
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+// Serve static files from uploads directory - PUBLIC ACCESS (no authentication required)
+// This route must be before requestLogger to ensure public access
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads"), {
+  setHeaders: (res, filePath) => {
+    // Explicitly set CORS headers for static files to allow public access
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.set('Access-Control-Allow-Headers', '*');
+    // Cache static files for better performance
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  },
+  // Don't serve directory listings for security
+  index: false,
+  // Allow requests without authentication
+  dotfiles: 'ignore'
+}));
 
 app.use(requestLogger); // optional but useful
 
