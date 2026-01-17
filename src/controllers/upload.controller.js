@@ -1,5 +1,6 @@
 const asyncHandler = require('../middleware/asyncHandler');
 const path = require('path');
+const User = require('../models/user.model');
 
 /**
  * Upload single file controller
@@ -26,6 +27,7 @@ exports.uploadSingleFile = asyncHandler(async (req, res) => {
 
 /**
  * Upload multiple files controller
+ * For doctor documents, also updates the user's documentUploads field
  */
 exports.uploadMultipleFiles = asyncHandler(async (req, res) => {
   if (!req.files || req.files.length === 0) {
@@ -42,9 +44,43 @@ exports.uploadMultipleFiles = asyncHandler(async (req, res) => {
     return `/uploads/${filePath.replace(/\\/g, '/')}`;
   });
 
+  // If this is a doctor documents upload, update the user's documentUploads field
+  // Check if the route is /doctor-docs by checking req.originalUrl or req.path
+  const isDoctorDocsUpload = req.originalUrl?.includes('/doctor-docs') || 
+                             req.path?.includes('doctor-docs') ||
+                             req.baseUrl?.includes('doctor-docs') ||
+                             req.url?.includes('doctor-docs');
+
+  if (isDoctorDocsUpload && req.userId) {
+    try {
+      const user = await User.findById(req.userId);
+      if (user && user.role === 'DOCTOR') {
+        // Create document uploads array
+        const documentUploads = urls.map(url => ({
+          fileUrl: url,
+          type: 'VERIFICATION_DOCUMENT' // Default type for verification documents
+        }));
+
+        // Update user's documentUploads field
+        // If documentUploads already exists, append to it; otherwise, set it
+        if (user.documentUploads && Array.isArray(user.documentUploads)) {
+          user.documentUploads = [...user.documentUploads, ...documentUploads];
+        } else {
+          user.documentUploads = documentUploads;
+        }
+
+        await user.save();
+      }
+    } catch (error) {
+      // Log error but don't fail the upload
+      console.error('Error updating user documentUploads:', error);
+      // Continue with the response even if update fails
+    }
+  }
+
   res.json({
     success: true,
-    message: 'Files uploaded',
+    message: 'Files uploaded successfully',
     data: { urls }
   });
 });

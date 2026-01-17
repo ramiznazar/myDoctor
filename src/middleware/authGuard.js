@@ -87,6 +87,7 @@ const authGuard = (allowedRoles = []) => {
       }
 
       // Check if user is blocked or rejected
+      // Note: PENDING doctors are allowed to access routes (they need to upload documents)
       if (user.status === 'BLOCKED' || user.status === 'REJECTED') {
         return sendError(
           res,
