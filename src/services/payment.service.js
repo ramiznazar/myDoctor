@@ -4,6 +4,7 @@ const User = require('../models/user.model');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const Product = require('../models/product.model');
 const DoctorSubscription = require('../models/doctorSubscription.model');
+const balanceService = require('./balance.service');
 
 /**
  * Process appointment payment
@@ -195,6 +196,26 @@ const processOrderPayment = async (orderId, paymentMethod = 'DUMMY', amount = nu
   order.paymentMethod = paymentMethod;
   await order.save();
 
+  // Credit seller (owner) balance with the order amount (excluding shipping if needed)
+  // For now, credit the full order total. You can adjust this logic if shipping should go to admin
+  try {
+    const sellerAmount = order.subtotal; // Credit only the product subtotal, not shipping
+    await balanceService.creditBalance(
+      order.ownerId.toString(),
+      sellerAmount,
+      'ORDER',
+      {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        transactionId: transaction._id.toString()
+      }
+    );
+  } catch (error) {
+    // Log error but don't fail the payment processing
+    console.error('Error crediting seller balance for order:', error);
+    // You might want to add a retry mechanism or notification here
+  }
+
   return { transaction, order };
 };
 
@@ -204,7 +225,9 @@ const processOrderPayment = async (orderId, paymentMethod = 'DUMMY', amount = nu
  * @returns {Promise<Object>} Refunded transaction
  */
 const refundTransaction = async (transactionId) => {
-  const transaction = await Transaction.findById(transactionId);
+  const transaction = await Transaction.findById(transactionId)
+    .populate('relatedAppointmentId')
+    .populate('relatedOrderId');
   
   if (!transaction) {
     throw new Error('Transaction not found');
@@ -212,6 +235,73 @@ const refundTransaction = async (transactionId) => {
 
   if (transaction.status === 'REFUNDED') {
     throw new Error('Transaction already refunded');
+  }
+
+  // Deduct balance from doctor/seller if balance was previously credited
+  try {
+    if (transaction.relatedAppointmentId) {
+      // Refund appointment payment - deduct from doctor's balance
+      const appointment = await Appointment.findById(transaction.relatedAppointmentId);
+      if (appointment && appointment.doctorId) {
+        const doctorId = appointment.doctorId.toString ? appointment.doctorId.toString() : appointment.doctorId;
+        
+        // Check if balance was credited for this appointment
+        const creditTransaction = await Transaction.findOne({
+          userId: doctorId,
+          'metadata.type': 'BALANCE_CREDIT',
+          'metadata.transactionType': 'APPOINTMENT',
+          'metadata.appointmentId': appointment._id.toString()
+        });
+
+        if (creditTransaction && creditTransaction.amount > 0) {
+          // Deduct the credited amount from doctor's balance
+          await balanceService.debitBalance(
+            doctorId,
+            creditTransaction.amount,
+            'REFUND',
+            {
+              originalTransactionId: transaction._id.toString(),
+              appointmentId: appointment._id.toString(),
+              refundReason: 'Appointment refunded'
+            }
+          );
+        }
+      }
+    } else if (transaction.relatedOrderId) {
+      // Refund order payment - deduct from seller's balance
+      const Order = require('../models/order.model');
+      const order = await Order.findById(transaction.relatedOrderId);
+      if (order && order.ownerId) {
+        const ownerId = order.ownerId.toString ? order.ownerId.toString() : order.ownerId;
+        
+        // Check if balance was credited for this order
+        const creditTransaction = await Transaction.findOne({
+          userId: ownerId,
+          'metadata.type': 'BALANCE_CREDIT',
+          'metadata.transactionType': 'ORDER',
+          'metadata.orderId': order._id.toString()
+        });
+
+        if (creditTransaction && creditTransaction.amount > 0) {
+          // Deduct the credited amount from seller's balance
+          await balanceService.debitBalance(
+            ownerId,
+            creditTransaction.amount,
+            'REFUND',
+            {
+              originalTransactionId: transaction._id.toString(),
+              orderId: order._id.toString(),
+              orderNumber: order.orderNumber,
+              refundReason: 'Order refunded'
+            }
+          );
+        }
+      }
+    }
+  } catch (error) {
+    // Log error but don't fail the refund
+    console.error('Error deducting balance during refund:', error);
+    // You might want to add a retry mechanism or notification here
   }
 
   transaction.status = 'REFUNDED';
@@ -223,6 +313,16 @@ const refundTransaction = async (transactionId) => {
     if (appointment) {
       appointment.paymentStatus = 'REFUNDED';
       await appointment.save();
+    }
+  }
+
+  // Update related order if exists
+  if (transaction.relatedOrderId) {
+    const Order = require('../models/order.model');
+    const order = await Order.findById(transaction.relatedOrderId);
+    if (order) {
+      order.paymentStatus = 'REFUNDED';
+      await order.save();
     }
   }
 

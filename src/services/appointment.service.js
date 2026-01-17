@@ -1,5 +1,7 @@
 const Appointment = require('../models/appointment.model');
 const User = require('../models/user.model');
+const Transaction = require('../models/transaction.model');
+const balanceService = require('./balance.service');
 
 /**
  * Create appointment
@@ -153,7 +155,47 @@ const updateAppointmentStatus = async (id, statusData) => {
     appointment.notes = notes;
   }
 
+  const previousStatus = appointment.status;
   await appointment.save();
+
+  // Credit doctor balance when appointment is completed and payment is PAID
+  if (status === 'COMPLETED' && appointment.paymentStatus === 'PAID' && previousStatus !== 'COMPLETED') {
+    try {
+      // Find the transaction related to this appointment
+      const transaction = await Transaction.findOne({
+        relatedAppointmentId: appointment._id,
+        status: 'SUCCESS'
+      }).sort({ createdAt: -1 }); // Get the most recent successful transaction
+
+      if (transaction && transaction.amount > 0) {
+        // Check if balance was already credited (avoid double crediting)
+        const existingCreditTransaction = await Transaction.findOne({
+          userId: appointment.doctorId._id,
+          'metadata.type': 'BALANCE_CREDIT',
+          'metadata.transactionType': 'APPOINTMENT',
+          'metadata.appointmentId': appointment._id.toString()
+        });
+
+        if (!existingCreditTransaction) {
+          // Credit doctor balance
+          await balanceService.creditBalance(
+            appointment.doctorId._id.toString(),
+            transaction.amount,
+            'APPOINTMENT',
+            {
+              appointmentId: appointment._id.toString(),
+              appointmentNumber: appointment.appointmentNumber,
+              transactionId: transaction._id.toString()
+            }
+          );
+        }
+      }
+    } catch (error) {
+      // Log error but don't fail the status update
+      console.error('Error crediting doctor balance for completed appointment:', error);
+      // You might want to add a retry mechanism or notification here
+    }
+  }
 
   // Create notification for patient when doctor accepts/rejects
   if (status === 'CONFIRMED' || status === 'REJECTED') {

@@ -3,6 +3,127 @@ const WithdrawalRequest = require('../models/withdrawalRequest.model');
 const Transaction = require('../models/transaction.model');
 
 /**
+ * Calculate net amount after platform fee
+ * @param {number} amount - Gross amount
+ * @param {number} platformFeePercent - Platform fee percentage (0-100)
+ * @returns {Object} { netAmount, platformFee }
+ */
+const calculateNetAmount = (amount, platformFeePercent = 0) => {
+  const platformFee = (amount * platformFeePercent) / 100;
+  const netAmount = amount - platformFee;
+  return { netAmount, platformFee };
+};
+
+/**
+ * Credit balance to user (internal helper)
+ * @param {string} userId - User ID
+ * @param {number} amount - Amount to credit
+ * @param {string} transactionType - Type of transaction (APPOINTMENT, ORDER, etc.)
+ * @param {Object} metadata - Additional metadata
+ * @returns {Promise<Object>} Updated balance info
+ */
+const creditBalance = async (userId, amount, transactionType, metadata = {}) => {
+  if (amount <= 0) {
+    throw new Error('Amount must be greater than 0');
+  }
+
+  const user = await User.findById(userId);
+  
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  // Get platform fee percentage from env (default 0%)
+  const platformFeePercent = parseFloat(process.env.PLATFORM_FEE_PERCENT || '0');
+  const { netAmount, platformFee } = calculateNetAmount(amount, platformFeePercent);
+
+  // Update balance
+  user.balance = (user.balance || 0) + netAmount;
+  await user.save();
+
+  // Create transaction record for the credit
+  await Transaction.create({
+    userId,
+    amount: netAmount,
+    currency: 'USD',
+    status: 'SUCCESS',
+    provider: 'BALANCE_CREDIT',
+    providerReference: `${transactionType}-${Date.now()}-${userId}`,
+    metadata: {
+      type: 'BALANCE_CREDIT',
+      transactionType,
+      grossAmount: amount,
+      platformFee,
+      platformFeePercent,
+      netAmount,
+      ...metadata
+    }
+  });
+
+  return {
+    userId: user._id,
+    balance: user.balance,
+    creditedAmount: netAmount,
+    platformFee,
+    grossAmount: amount
+  };
+};
+
+/**
+ * Debit balance from user (for refunds)
+ * @param {string} userId - User ID
+ * @param {number} amount - Amount to debit
+ * @param {string} transactionType - Type of transaction (REFUND, etc.)
+ * @param {Object} metadata - Additional metadata
+ * @returns {Promise<Object>} Updated balance info
+ */
+const debitBalance = async (userId, amount, transactionType, metadata = {}) => {
+  if (amount <= 0) {
+    throw new Error('Amount must be greater than 0');
+  }
+
+  const user = await User.findById(userId);
+  
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  // Check if user has sufficient balance
+  const currentBalance = user.balance || 0;
+  if (currentBalance < amount) {
+    // Allow negative balance for refunds (doctor owes the platform)
+    // But log a warning
+    console.warn(`Warning: Debiting ${amount} from user ${userId} with balance ${currentBalance} (will result in negative balance)`);
+  }
+
+  // Update balance
+  user.balance = currentBalance - amount;
+  await user.save();
+
+  // Create transaction record for the debit
+  await Transaction.create({
+    userId,
+    amount: -amount, // Negative for debit
+    currency: 'USD',
+    status: 'SUCCESS',
+    provider: 'BALANCE_DEBIT',
+    providerReference: `${transactionType}-${Date.now()}-${userId}`,
+    metadata: {
+      type: 'BALANCE_DEBIT',
+      transactionType,
+      amount,
+      ...metadata
+    }
+  });
+
+  return {
+    userId: user._id,
+    balance: user.balance,
+    debitedAmount: amount
+  };
+};
+
+/**
  * Get user balance
  * @param {string} userId - User ID
  * @returns {Promise<Object>} User balance info
@@ -249,6 +370,9 @@ module.exports = {
   requestWithdrawal,
   approveWithdrawal,
   rejectWithdrawal,
-  getWithdrawalRequests
+  getWithdrawalRequests,
+  creditBalance,
+  debitBalance,
+  calculateNetAmount
 };
 
