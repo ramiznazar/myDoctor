@@ -41,7 +41,8 @@ const upsertDoctorProfile = async (userId, profileData) => {
     profileData.specialization = specializationId;
   }
 
-  // Handle insurance companies
+  // Handle insurance companies - VALIDATE but don't modify profileData yet
+  // We'll set the values directly on the profile object later
   console.log('🔍 upsertDoctorProfile - Received data:', {
     convenzionato: profileData.convenzionato,
     insuranceCompanies: profileData.insuranceCompanies,
@@ -49,12 +50,14 @@ const upsertDoctorProfile = async (userId, profileData) => {
     isArray: Array.isArray(profileData.insuranceCompanies)
   });
   
-  if (profileData.insuranceCompanies !== undefined) {
-    // If convenzionato is false, clear insurance companies
-    if (profileData.convenzionato === false) {
-      profileData.insuranceCompanies = [];
-      console.log('🔍 upsertDoctorProfile - Convenzionato is false, clearing insurance companies');
-    } else if (Array.isArray(profileData.insuranceCompanies) && profileData.insuranceCompanies.length > 0) {
+  // Store validated insurance IDs separately (don't modify profileData yet)
+  let validatedInsuranceIds = [];
+  
+  if (profileData.insuranceCompanies !== undefined && Array.isArray(profileData.insuranceCompanies) && profileData.insuranceCompanies.length > 0) {
+    // Only validate if convenzionato is true (or will be set to true)
+    const willBeConvenzionato = profileData.convenzionato === true || profileData.convenzionato === 'true' || profileData.convenzionato === 1;
+    
+    if (willBeConvenzionato) {
       // Validate all insurance company IDs exist and are active
       const insuranceIds = profileData.insuranceCompanies.filter(id => id);
       console.log('🔍 upsertDoctorProfile - Validating insurance IDs:', insuranceIds);
@@ -71,16 +74,11 @@ const upsertDoctorProfile = async (userId, profileData) => {
           throw new Error('One or more insurance companies are invalid or inactive');
         }
         
-        // Set only valid insurance company IDs
-        profileData.insuranceCompanies = insuranceIds;
-        console.log('🔍 upsertDoctorProfile - Set validated insurance IDs:', profileData.insuranceCompanies);
+        // Store validated IDs
+        validatedInsuranceIds = insuranceIds;
+        console.log('🔍 upsertDoctorProfile - Validated insurance IDs:', validatedInsuranceIds);
       }
     }
-  }
-  
-  // If convenzionato is being set to false, clear insurance companies
-  if (profileData.convenzionato === false && profileData.insuranceCompanies === undefined) {
-    profileData.insuranceCompanies = [];
   }
 
   // Find or create profile
@@ -119,7 +117,8 @@ const upsertDoctorProfile = async (userId, profileData) => {
     }
     
     // Explicitly handle insuranceCompanies AFTER convenzionato is set
-    if (profileData.insuranceCompanies !== undefined) {
+    // Use the validated insurance IDs we prepared earlier
+    if (profileData.convenzionato !== undefined || profileData.insuranceCompanies !== undefined) {
       // Use the NEW convenzionato value - check profileData first, then profile (which we just set)
       // Handle string "true"/"false" or number 1/0
       const convenzionatoFromData = profileData.convenzionato !== undefined 
@@ -130,19 +129,22 @@ const upsertDoctorProfile = async (userId, profileData) => {
         profileDataConvenzionato: profileData.convenzionato,
         profileConvenzionato: profile.convenzionato,
         shouldSetInsurance: shouldSetInsurance,
-        insuranceCompaniesToSet: profileData.insuranceCompanies
+        validatedInsuranceIds: validatedInsuranceIds,
+        profileDataInsuranceCompanies: profileData.insuranceCompanies
       });
       
-      if (shouldSetInsurance) {
+      if (shouldSetInsurance && validatedInsuranceIds.length > 0) {
         // Use the validated insurance company IDs from the earlier validation
-        // Ensure we have an array of valid ObjectIds
-        const insuranceIds = Array.isArray(profileData.insuranceCompanies) 
-          ? profileData.insuranceCompanies.filter(id => id) 
-          : [];
-        profile.insuranceCompanies = insuranceIds;
+        profile.insuranceCompanies = validatedInsuranceIds;
         // Mark the array as modified for Mongoose
         profile.markModified('insuranceCompanies');
         console.log('🔍 upsertDoctorProfile - Set insurance companies:', profile.insuranceCompanies);
+      } else if (shouldSetInsurance && profileData.insuranceCompanies !== undefined && Array.isArray(profileData.insuranceCompanies)) {
+        // Fallback: use the IDs from profileData if validation didn't run (shouldn't happen, but just in case)
+        const insuranceIds = profileData.insuranceCompanies.filter(id => id);
+        profile.insuranceCompanies = insuranceIds;
+        profile.markModified('insuranceCompanies');
+        console.log('🔍 upsertDoctorProfile - Set insurance companies (fallback):', profile.insuranceCompanies);
       } else {
         // If convenzionato is false, ensure insurance companies are empty
         profile.insuranceCompanies = [];

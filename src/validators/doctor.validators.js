@@ -75,7 +75,9 @@ const upsertDoctorProfileValidator = z.object({
     }).optional(),
     isFeatured: z.boolean().optional(),
     isAvailableOnline: z.boolean().optional(),
-    canSellProducts: z.boolean().optional()
+    canSellProducts: z.boolean().optional(),
+    convenzionato: z.boolean().optional(),
+    insuranceCompanies: z.array(z.string().min(1)).optional()
   })
 });
 
