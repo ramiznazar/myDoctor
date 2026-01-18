@@ -106,21 +106,48 @@ const upsertDoctorProfile = async (userId, profileData) => {
     // Explicitly handle convenzionato FIRST (before insuranceCompanies)
     // This ensures the value is set before we check it for insurance companies
     if (profileData.convenzionato !== undefined) {
-      profile.convenzionato = profileData.convenzionato === true;
+      // Ensure boolean conversion - handle string "true"/"false" or number 1/0
+      const convenzionatoValue = profileData.convenzionato === true || profileData.convenzionato === 'true' || profileData.convenzionato === 1;
+      profile.convenzionato = convenzionatoValue;
+      console.log('🔍 upsertDoctorProfile - Set convenzionato to:', profile.convenzionato, 'from:', profileData.convenzionato, 'type:', typeof profileData.convenzionato);
       // If convenzionato is false, clear insurance companies
-      if (profileData.convenzionato === false) {
+      if (!convenzionatoValue) {
         profile.insuranceCompanies = [];
+        profile.markModified('insuranceCompanies');
+        console.log('🔍 upsertDoctorProfile - Convenzionato false, cleared insurance companies');
       }
     }
     
     // Explicitly handle insuranceCompanies AFTER convenzionato is set
     if (profileData.insuranceCompanies !== undefined) {
-      if (profile.convenzionato === true) {
+      // Use the NEW convenzionato value - check profileData first, then profile (which we just set)
+      // Handle string "true"/"false" or number 1/0
+      const convenzionatoFromData = profileData.convenzionato !== undefined 
+        ? (profileData.convenzionato === true || profileData.convenzionato === 'true' || profileData.convenzionato === 1)
+        : (profile.convenzionato === true);
+      const shouldSetInsurance = convenzionatoFromData;
+      console.log('🔍 upsertDoctorProfile - Setting insuranceCompanies:', {
+        profileDataConvenzionato: profileData.convenzionato,
+        profileConvenzionato: profile.convenzionato,
+        shouldSetInsurance: shouldSetInsurance,
+        insuranceCompaniesToSet: profileData.insuranceCompanies
+      });
+      
+      if (shouldSetInsurance) {
         // Use the validated insurance company IDs from the earlier validation
-        profile.insuranceCompanies = profileData.insuranceCompanies || [];
+        // Ensure we have an array of valid ObjectIds
+        const insuranceIds = Array.isArray(profileData.insuranceCompanies) 
+          ? profileData.insuranceCompanies.filter(id => id) 
+          : [];
+        profile.insuranceCompanies = insuranceIds;
+        // Mark the array as modified for Mongoose
+        profile.markModified('insuranceCompanies');
+        console.log('🔍 upsertDoctorProfile - Set insurance companies:', profile.insuranceCompanies);
       } else {
         // If convenzionato is false, ensure insurance companies are empty
         profile.insuranceCompanies = [];
+        profile.markModified('insuranceCompanies');
+        console.log('🔍 upsertDoctorProfile - Convenzionato false, insurance companies set to empty');
       }
     }
     
@@ -146,7 +173,22 @@ const upsertDoctorProfile = async (userId, profileData) => {
       }
     });
     
+    // Log before save to verify values
+    console.log('🔍 upsertDoctorProfile - Before save:', {
+      convenzionato: profile.convenzionato,
+      insuranceCompanies: profile.insuranceCompanies,
+      insuranceCompaniesLength: profile.insuranceCompanies?.length
+    });
+    
     await profile.save();
+    
+    // Log after save to verify persistence - reload from DB
+    const savedProfile = await DoctorProfile.findById(profile._id);
+    console.log('🔍 upsertDoctorProfile - After save (from DB):', {
+      convenzionato: savedProfile.convenzionato,
+      insuranceCompanies: savedProfile.insuranceCompanies,
+      insuranceCompaniesLength: savedProfile.insuranceCompanies?.length
+    });
   }
 
   // Calculate and update profileCompleted flag
