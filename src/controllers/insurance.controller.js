@@ -1,5 +1,5 @@
 const insuranceService = require('../services/insurance.service');
-const { asyncHandler } = require('../utils/asyncHandler');
+const asyncHandler = require('../middleware/asyncHandler');
 
 /**
  * Get all insurance companies (admin)
