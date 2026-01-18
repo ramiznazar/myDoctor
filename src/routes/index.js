@@ -17,6 +17,7 @@ router.use('/admin/subscription-plan', require('./subscriptionPlan.routes'));
 router.use('/users', require('./user.routes'));
 router.use('/doctor', require('./doctor.routes'));
 router.use('/specialization', require('./specialization.routes'));
+router.use('/insurance', require('./insurance.routes'));
 router.use('/subscription', require('./subscription.routes'));
 router.use('/appointment', require('./appointment.routes'));
 router.use('/video', require('./videoSession.routes'));

@@ -144,7 +144,17 @@ const doctorProfileSchema = new mongoose.Schema({
   profileCompleted: {
     type: Boolean,
     default: false
-  }
+  },
+  // Insurance integration
+  convenzionato: {
+    type: Boolean,
+    default: false
+  },
+  insuranceCompanies: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "InsuranceCompany",
+    default: []
+  }]
 }, {
   timestamps: true
 });

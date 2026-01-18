@@ -3,6 +3,7 @@ const User = require('../models/user.model');
 const Review = require('../models/review.model');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const Specialization = require('../models/specialization.model');
+const InsuranceCompany = require('../models/insuranceCompany.model');
 const Product = require('../models/product.model');
 
 /**
@@ -38,6 +39,35 @@ const upsertDoctorProfile = async (userId, profileData) => {
     // Set specialization field in profileData (use the verified ID)
     // This will overwrite any existing specialization value
     profileData.specialization = specializationId;
+  }
+
+  // Handle insurance companies
+  if (profileData.insuranceCompanies !== undefined) {
+    // If convenzionato is false, clear insurance companies
+    if (profileData.convenzionato === false) {
+      profileData.insuranceCompanies = [];
+    } else if (Array.isArray(profileData.insuranceCompanies) && profileData.insuranceCompanies.length > 0) {
+      // Validate all insurance company IDs exist and are active
+      const insuranceIds = profileData.insuranceCompanies.filter(id => id);
+      if (insuranceIds.length > 0) {
+        const validInsurances = await InsuranceCompany.find({
+          _id: { $in: insuranceIds },
+          isActive: true
+        });
+        
+        if (validInsurances.length !== insuranceIds.length) {
+          throw new Error('One or more insurance companies are invalid or inactive');
+        }
+        
+        // Set only valid insurance company IDs
+        profileData.insuranceCompanies = insuranceIds;
+      }
+    }
+  }
+  
+  // If convenzionato is being set to false, clear insurance companies
+  if (profileData.convenzionato === false && profileData.insuranceCompanies === undefined) {
+    profileData.insuranceCompanies = [];
   }
 
   // Find or create profile
@@ -107,6 +137,8 @@ const upsertDoctorProfile = async (userId, profileData) => {
 const getDoctorProfile = async (userId) => {
   const profile = await DoctorProfile.findOne({ userId })
     .populate('specialization')
+    .populate('insuranceCompanies')
+    .populate('insuranceCompanies')
     .populate('userId', 'fullName email phone profileImage status');
   
   if (!profile) {
@@ -181,6 +213,7 @@ const listDoctors = async (filter = {}) => {
   const [doctors, total] = await Promise.all([
     DoctorProfile.find(query)
       .populate('specialization')
+    .populate('insuranceCompanies')
       .populate('userId', 'fullName email phone profileImage status')
       .skip(skip)
       .limit(limit)

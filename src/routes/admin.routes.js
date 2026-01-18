@@ -3,10 +3,16 @@ const router = express.Router();
 const userController = require('../controllers/user.controller');
 const adminController = require('../controllers/admin.controller');
 const orderController = require('../controllers/order.controller');
+const insuranceController = require('../controllers/insurance.controller');
 const authGuard = require('../middleware/authGuard');
 const asyncHandler = require('../middleware/asyncHandler');
 const validate = require('../middleware/validate');
 const { filterOrdersValidator } = require('../validators/order.validators');
+const {
+  createInsuranceCompanyValidator,
+  updateInsuranceCompanyValidator,
+  toggleStatusValidator
+} = require('../validators/insurance.validators');
 
 /**
  * @route   GET /admin/dashboard
@@ -94,6 +100,64 @@ router.get(
   '/specializations',
   authGuard(['ADMIN']),
   asyncHandler(adminController.getAllSpecializations)
+);
+
+/**
+ * @route   GET /admin/insurance
+ * @desc    Get all insurance companies
+ * @access  Private (Admin only)
+ */
+router.get(
+  '/insurance',
+  authGuard(['ADMIN']),
+  asyncHandler(insuranceController.getAllInsuranceCompanies)
+);
+
+/**
+ * @route   POST /admin/insurance
+ * @desc    Create insurance company
+ * @access  Private (Admin only)
+ */
+router.post(
+  '/insurance',
+  authGuard(['ADMIN']),
+  validate(createInsuranceCompanyValidator),
+  asyncHandler(insuranceController.createInsuranceCompany)
+);
+
+/**
+ * @route   PUT /admin/insurance/:id
+ * @desc    Update insurance company
+ * @access  Private (Admin only)
+ */
+router.put(
+  '/insurance/:id',
+  authGuard(['ADMIN']),
+  validate(updateInsuranceCompanyValidator),
+  asyncHandler(insuranceController.updateInsuranceCompany)
+);
+
+/**
+ * @route   DELETE /admin/insurance/:id
+ * @desc    Delete insurance company
+ * @access  Private (Admin only)
+ */
+router.delete(
+  '/insurance/:id',
+  authGuard(['ADMIN']),
+  asyncHandler(insuranceController.deleteInsuranceCompany)
+);
+
+/**
+ * @route   PATCH /admin/insurance/:id/status
+ * @desc    Toggle insurance company status
+ * @access  Private (Admin only)
+ */
+router.patch(
+  '/insurance/:id/status',
+  authGuard(['ADMIN']),
+  validate(toggleStatusValidator),
+  asyncHandler(insuranceController.toggleInsuranceCompanyStatus)
 );
 
 /**
