@@ -42,18 +42,30 @@ const upsertDoctorProfile = async (userId, profileData) => {
   }
 
   // Handle insurance companies
+  console.log('🔍 upsertDoctorProfile - Received data:', {
+    convenzionato: profileData.convenzionato,
+    insuranceCompanies: profileData.insuranceCompanies,
+    insuranceCompaniesType: typeof profileData.insuranceCompanies,
+    isArray: Array.isArray(profileData.insuranceCompanies)
+  });
+  
   if (profileData.insuranceCompanies !== undefined) {
     // If convenzionato is false, clear insurance companies
     if (profileData.convenzionato === false) {
       profileData.insuranceCompanies = [];
+      console.log('🔍 upsertDoctorProfile - Convenzionato is false, clearing insurance companies');
     } else if (Array.isArray(profileData.insuranceCompanies) && profileData.insuranceCompanies.length > 0) {
       // Validate all insurance company IDs exist and are active
       const insuranceIds = profileData.insuranceCompanies.filter(id => id);
+      console.log('🔍 upsertDoctorProfile - Validating insurance IDs:', insuranceIds);
+      
       if (insuranceIds.length > 0) {
         const validInsurances = await InsuranceCompany.find({
           _id: { $in: insuranceIds },
           isActive: true
         });
+        
+        console.log('🔍 upsertDoctorProfile - Valid insurances found:', validInsurances.length, 'out of', insuranceIds.length);
         
         if (validInsurances.length !== insuranceIds.length) {
           throw new Error('One or more insurance companies are invalid or inactive');
@@ -61,6 +73,7 @@ const upsertDoctorProfile = async (userId, profileData) => {
         
         // Set only valid insurance company IDs
         profileData.insuranceCompanies = insuranceIds;
+        console.log('🔍 upsertDoctorProfile - Set validated insurance IDs:', profileData.insuranceCompanies);
       }
     }
   }
@@ -90,9 +103,31 @@ const upsertDoctorProfile = async (userId, profileData) => {
       profile.specialization = profileData.specialization;
     }
     
+    // Explicitly handle convenzionato FIRST (before insuranceCompanies)
+    // This ensures the value is set before we check it for insurance companies
+    if (profileData.convenzionato !== undefined) {
+      profile.convenzionato = profileData.convenzionato === true;
+      // If convenzionato is false, clear insurance companies
+      if (profileData.convenzionato === false) {
+        profile.insuranceCompanies = [];
+      }
+    }
+    
+    // Explicitly handle insuranceCompanies AFTER convenzionato is set
+    if (profileData.insuranceCompanies !== undefined) {
+      if (profile.convenzionato === true) {
+        // Use the validated insurance company IDs from the earlier validation
+        profile.insuranceCompanies = profileData.insuranceCompanies || [];
+      } else {
+        // If convenzionato is false, ensure insurance companies are empty
+        profile.insuranceCompanies = [];
+      }
+    }
+    
+    // Handle all other fields
     Object.keys(profileData).forEach(key => {
-      // Skip specialization as we already handled it above
-      if (key === 'specialization') {
+      // Skip fields we've already handled explicitly
+      if (key === 'specialization' || key === 'convenzionato' || key === 'insuranceCompanies') {
         return;
       }
       
@@ -137,8 +172,7 @@ const upsertDoctorProfile = async (userId, profileData) => {
 const getDoctorProfile = async (userId) => {
   const profile = await DoctorProfile.findOne({ userId })
     .populate('specialization')
-    .populate('insuranceCompanies')
-    .populate('insuranceCompanies')
+    .populate('insuranceCompanies') // Populate insurance companies with full details
     .populate('userId', 'fullName email phone profileImage status');
   
   if (!profile) {
