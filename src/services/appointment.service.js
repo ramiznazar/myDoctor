@@ -82,10 +82,34 @@ const createAppointment = async (data) => {
     }
   }
 
-  // Calculate appointment end time
+  // Calculate appointment end time - parse date correctly to avoid timezone issues
+  // Extract date components from appointmentDate (could be string or Date)
+  let year, month, day;
+  if (appointmentDate instanceof Date) {
+    year = appointmentDate.getFullYear();
+    month = appointmentDate.getMonth();
+    day = appointmentDate.getDate();
+  } else {
+    // Parse date string (YYYY-MM-DD format)
+    const dateStr = appointmentDate.toString();
+    if (dateStr.includes('T')) {
+      const dateOnly = dateStr.split('T')[0];
+      [year, month, day] = dateOnly.split('-').map(Number);
+      month = month - 1; // JavaScript months are 0-indexed
+    } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      [year, month, day] = dateStr.split('-').map(Number);
+      month = month - 1; // JavaScript months are 0-indexed
+    } else {
+      const dateObj = new Date(appointmentDate);
+      year = dateObj.getFullYear();
+      month = dateObj.getMonth();
+      day = dateObj.getDate();
+    }
+  }
+  
   const [hours, minutes] = appointmentTime.split(':').map(Number);
-  const appointmentStartDateTime = new Date(appointmentDate);
-  appointmentStartDateTime.setHours(hours, minutes, 0, 0);
+  // Create datetime using local timezone constructor
+  const appointmentStartDateTime = new Date(year, month, day, hours, minutes, 0, 0);
   const appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
   const appointmentEndTime = `${appointmentEndDateTime.getHours().toString().padStart(2, '0')}:${appointmentEndDateTime.getMinutes().toString().padStart(2, '0')}`;
 

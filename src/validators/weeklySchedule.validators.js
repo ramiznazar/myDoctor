@@ -61,9 +61,17 @@ const updateTimeSlotValidator = z.object({
  */
 const updateAppointmentDurationValidator = z.object({
   body: z.object({
-    duration: z.coerce.number().refine((val) => [15, 30, 45, 60].includes(val), {
+    duration: z.union([
+      z.literal(15),
+      z.literal(30),
+      z.literal(45),
+      z.literal(60),
+      z.string().refine((val) => ['15', '30', '45', '60'].includes(val), {
+        message: 'Duration must be 15, 30, 45, or 60 minutes'
+      }).transform((val) => parseInt(val))
+    ]).refine((val) => [15, 30, 45, 60].includes(Number(val)), {
       message: 'Duration must be 15, 30, 45, or 60 minutes'
-    })
+    }).transform((val) => Number(val))
   })
 });
 

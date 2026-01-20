@@ -3,21 +3,36 @@ const asyncHandler = require('./asyncHandler');
 
 /**
  * Parse appointment date to get year, month, day components
- * Handles timezone issues by parsing date strings directly
+ * CRITICAL: Handles timezone issues by always using local date components
+ * MongoDB stores dates in UTC, but we need to extract the date as the user intended (local date)
  */
 const parseAppointmentDate = (appointmentDate) => {
   if (!appointmentDate) {
     return null;
   }
   
+  // If it's a Date object (from MongoDB), extract the date components
+  // IMPORTANT: Use getFullYear/getMonth/getDate (local timezone methods)
+  // NOT getUTCFullYear/getUTCMonth/getUTCDate, because appointment times are in local timezone
   if (appointmentDate instanceof Date) {
-    // For Date objects, use local date components
-    // This is what the user expects (local date, not UTC)
-    return {
-      year: appointmentDate.getFullYear(),
-      month: appointmentDate.getMonth(),
-      day: appointmentDate.getDate()
-    };
+    const year = appointmentDate.getFullYear();
+    const month = appointmentDate.getMonth();
+    const day = appointmentDate.getDate();
+    
+    // Also log UTC components for debugging
+    const utcYear = appointmentDate.getUTCFullYear();
+    const utcMonth = appointmentDate.getUTCMonth();
+    const utcDay = appointmentDate.getUTCDate();
+    
+    console.log('📅 [Date Parse] Date object parsed:', {
+      originalISO: appointmentDate.toISOString(),
+      originalLocal: appointmentDate.toString(),
+      usingLocal: { year, month, day },
+      utcComponents: { year: utcYear, month: utcMonth, day: utcDay },
+      difference: (year !== utcYear || month !== utcMonth || day !== utcDay) ? 'DIFFERENT' : 'SAME'
+    });
+    
+    return { year, month, day };
   }
   
   // For strings, parse directly to avoid timezone conversion
@@ -27,6 +42,7 @@ const parseAppointmentDate = (appointmentDate) => {
   if (dateStr.includes('T')) {
     const dateOnly = dateStr.split('T')[0];
     const [y, m, d] = dateOnly.split('-').map(Number);
+    console.log('📅 [Date Parse] ISO string parsed:', { dateStr, dateOnly, year: y, month: m - 1, day: d });
     return {
       year: y,
       month: m - 1, // JavaScript months are 0-indexed
@@ -37,6 +53,7 @@ const parseAppointmentDate = (appointmentDate) => {
   // Try YYYY-MM-DD format
   if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
     const [y, m, d] = dateStr.split('-').map(Number);
+    console.log('📅 [Date Parse] YYYY-MM-DD string parsed:', { dateStr, year: y, month: m - 1, day: d });
     return {
       year: y,
       month: m - 1,
@@ -46,11 +63,11 @@ const parseAppointmentDate = (appointmentDate) => {
   
   // Fallback: parse as Date and get local components
   const dateObj = new Date(appointmentDate);
-  return {
-    year: dateObj.getFullYear(),
-    month: dateObj.getMonth(),
-    day: dateObj.getDate()
-  };
+  const year = dateObj.getFullYear();
+  const month = dateObj.getMonth();
+  const day = dateObj.getDate();
+  console.log('📅 [Date Parse] Fallback parsing:', { dateStr, year, month, day });
+  return { year, month, day };
 };
 
 /**
@@ -116,6 +133,7 @@ const isWithinAppointmentWindow = (appointment) => {
   // Parse appointment date using helper function
   const dateComponents = parseAppointmentDate(appointment.appointmentDate);
   if (!dateComponents) {
+    console.error('❌ [Window Check] Failed to parse appointment date:', appointment.appointmentDate);
     return {
       isValid: false,
       message: 'Invalid appointment date',
@@ -125,6 +143,9 @@ const isWithinAppointmentWindow = (appointment) => {
   }
   
   const { year, month, day } = dateComponents;
+  
+  // Log the parsed date components
+  console.log('📅 [Window Check] Parsed date components:', { year, month, day, appointmentDate: appointment.appointmentDate });
   
   // Parse appointment time (HH:MM format) - this is in local timezone
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
@@ -158,46 +179,54 @@ const isWithinAppointmentWindow = (appointment) => {
     appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
   }
   
-  // Allow buffer before appointment start time to account for clock differences
-  // Increased buffer to handle timezone issues - users can join anytime during the window
-  const bufferTime = 15 * 60 * 1000; // 15 minutes buffer to handle timezone/clock sync issues
+  // Allow small buffer before appointment start time (2 minutes) to account for clock differences
+  // Users can join anytime during the appointment window (start to end)
+  const bufferTime = 2 * 60 * 1000; // 2 minutes buffer
   const earliestAllowedTime = new Date(appointmentStartDateTime.getTime() - bufferTime);
-  
-  // Also allow a grace period after end time (5 minutes) in case of minor timezone issues
-  const gracePeriodAfterEnd = 5 * 60 * 1000; // 5 minutes
-  const latestAllowedTime = new Date(appointmentEndDateTime.getTime() + gracePeriodAfterEnd);
   
   // Debug logging to help diagnose timezone issues
   const timeDiff = now.getTime() - appointmentStartDateTime.getTime();
   const timeDiffMinutes = timeDiff / (60 * 1000);
+  const timeDiffFromEnd = (now.getTime() - appointmentEndDateTime.getTime()) / (60 * 1000);
   const isValid = now >= earliestAllowedTime && now <= appointmentEndDateTime;
   
-  console.log('🕐 [Window Check]', {
+  console.log('🕐 [Window Check] DETAILED ANALYSIS', {
     now: {
       iso: now.toISOString(),
       local: now.toString(),
-      timestamp: now.getTime()
+      timestamp: now.getTime(),
+      hours: now.getHours(),
+      minutes: now.getMinutes(),
+      date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     },
     appointment: {
       dateRaw: appointment.appointmentDate,
       dateType: typeof appointment.appointmentDate,
       dateIsDate: appointment.appointmentDate instanceof Date,
+      dateString: appointment.appointmentDate?.toString(),
+      dateISO: appointment.appointmentDate instanceof Date ? appointment.appointmentDate.toISOString() : 'N/A',
       time: appointment.appointmentTime,
       endTime: appointment.appointmentEndTime,
       duration: appointment.appointmentDuration
     },
-    calculated: {
+    parsed: {
       year, month, day,
-      startHours, startMinutes,
+      startHours, startMinutes
+    },
+    calculated: {
       startDateTime: {
         iso: appointmentStartDateTime.toISOString(),
         local: appointmentStartDateTime.toString(),
-        timestamp: appointmentStartDateTime.getTime()
+        timestamp: appointmentStartDateTime.getTime(),
+        hours: appointmentStartDateTime.getHours(),
+        minutes: appointmentStartDateTime.getMinutes()
       },
       endDateTime: {
         iso: appointmentEndDateTime.toISOString(),
         local: appointmentEndDateTime.toString(),
-        timestamp: appointmentEndDateTime.getTime()
+        timestamp: appointmentEndDateTime.getTime(),
+        hours: appointmentEndDateTime.getHours(),
+        minutes: appointmentEndDateTime.getMinutes()
       },
       earliestAllowed: {
         iso: earliestAllowedTime.toISOString(),
@@ -208,9 +237,11 @@ const isWithinAppointmentWindow = (appointment) => {
     comparison: {
       timeDifferenceMs: timeDiff,
       timeDifferenceMinutes: timeDiffMinutes.toFixed(2),
+      timeDifferenceFromEndMinutes: timeDiffFromEnd.toFixed(2),
       isBeforeStart: now < earliestAllowedTime,
-      isAfterEnd: now > latestAllowedTime,
-      isValid: isValid
+      isAfterEnd: now > appointmentEndDateTime,
+      isValid: isValid,
+      reason: !isValid ? (now < earliestAllowedTime ? 'BEFORE_START' : 'AFTER_END') : 'WITHIN_WINDOW'
     }
   });
   
@@ -219,7 +250,8 @@ const isWithinAppointmentWindow = (appointment) => {
     console.log('❌ [Window Check] BLOCKED: Time is before earliest allowed time');
     console.log(`   Current: ${now.toString()} (${now.getTime()})`);
     console.log(`   Earliest: ${earliestAllowedTime.toString()} (${earliestAllowedTime.getTime()})`);
-    console.log(`   Difference: ${timeDiffMinutes.toFixed(2)} minutes`);
+    console.log(`   Start: ${appointmentStartDateTime.toString()} (${appointmentStartDateTime.getTime()})`);
+    console.log(`   Difference: ${timeDiffMinutes.toFixed(2)} minutes (negative = before start)`);
     return {
       isValid: false,
       message: `Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}.`,
@@ -228,12 +260,12 @@ const isWithinAppointmentWindow = (appointment) => {
     };
   }
   
-  // Check if current time is after latest allowed time (end time + grace period)
-  if (now > latestAllowedTime) {
-    console.log('❌ [Window Check] BLOCKED: Time is after latest allowed time (end + grace period)');
+  // Check if current time is after end time
+  if (now > appointmentEndDateTime) {
+    console.log('❌ [Window Check] BLOCKED: Time is after end time');
     console.log(`   Current: ${now.toString()} (${now.getTime()})`);
-    console.log(`   Latest: ${latestAllowedTime.toString()} (${latestAllowedTime.getTime()})`);
-    console.log(`   Difference: ${((now.getTime() - appointmentEndDateTime.getTime()) / (60 * 1000)).toFixed(2)} minutes after end`);
+    console.log(`   End: ${appointmentEndDateTime.toString()} (${appointmentEndDateTime.getTime()})`);
+    console.log(`   Difference: ${timeDiffFromEnd.toFixed(2)} minutes after end`);
     return {
       isValid: false,
       message: `The appointment time has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`,
@@ -386,8 +418,7 @@ const requireConfirmedAppointment = asyncHandler(async (req, res, next) => {
 module.exports = {
   requireAppointmentAccess,
   requireConfirmedAppointment,
-  isAppointmentTimeStarted,
-  isWithinAppointmentWindow
+  isAppointmentTimeStarted
 };
 
 
