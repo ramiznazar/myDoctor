@@ -61,17 +61,32 @@ const isWithinAppointmentWindow = (appointment) => {
 
   const now = new Date();
   
-  // Calculate appointment start time
-  const appointmentStartDateTime = new Date(appointment.appointmentDate);
+  // Handle appointmentDate - it might be a Date object or a string
+  // We need to extract just the date part (YYYY-MM-DD) and ignore time/timezone
+  let appointmentDateObj;
+  if (appointment.appointmentDate instanceof Date) {
+    // Create a new date using only the year, month, and day (ignore time)
+    appointmentDateObj = new Date(appointment.appointmentDate);
+  } else {
+    appointmentDateObj = new Date(appointment.appointmentDate);
+  }
+  
+  // Get date components (year, month, day) - use local timezone
+  const year = appointmentDateObj.getFullYear();
+  const month = appointmentDateObj.getMonth();
+  const day = appointmentDateObj.getDate();
+  
+  // Parse appointment time (HH:MM format) - this is in local timezone
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
-  appointmentStartDateTime.setHours(startHours, startMinutes, 0, 0);
+  
+  // Create appointment start datetime in local timezone
+  const appointmentStartDateTime = new Date(year, month, day, startHours, startMinutes, 0, 0);
   
   // Calculate appointment end time
   let appointmentEndDateTime;
   if (appointment.appointmentEndTime) {
     const [endHours, endMinutes] = appointment.appointmentEndTime.split(':').map(Number);
-    appointmentEndDateTime = new Date(appointment.appointmentDate);
-    appointmentEndDateTime.setHours(endHours, endMinutes, 0, 0);
+    appointmentEndDateTime = new Date(year, month, day, endHours, endMinutes, 0, 0);
   } else {
     // Calculate from duration (default 30 minutes)
     const duration = appointment.appointmentDuration || 30;
@@ -82,6 +97,23 @@ const isWithinAppointmentWindow = (appointment) => {
   // This helps with timezone/clock sync issues but users can join anytime during the window
   const bufferTime = 2 * 60 * 1000; // 2 minutes in milliseconds
   const earliestAllowedTime = new Date(appointmentStartDateTime.getTime() - bufferTime);
+  
+  // Debug logging to help diagnose timezone issues
+  console.log('🕐 [Window Check]', {
+    now: now.toISOString(),
+    nowLocal: now.toString(),
+    appointmentDate: appointment.appointmentDate,
+    appointmentTime: appointment.appointmentTime,
+    appointmentStartDateTime: appointmentStartDateTime.toISOString(),
+    appointmentStartDateTimeLocal: appointmentStartDateTime.toString(),
+    appointmentEndDateTime: appointmentEndDateTime.toISOString(),
+    appointmentEndDateTimeLocal: appointmentEndDateTime.toString(),
+    earliestAllowedTime: earliestAllowedTime.toISOString(),
+    timeDifference: now.getTime() - appointmentStartDateTime.getTime(),
+    isBeforeStart: now < earliestAllowedTime,
+    isAfterEnd: now > appointmentEndDateTime,
+    isValid: now >= earliestAllowedTime && now <= appointmentEndDateTime
+  });
   
   // Check if current time is before earliest allowed time (appointment start - buffer)
   if (now < earliestAllowedTime) {

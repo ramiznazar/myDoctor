@@ -49,9 +49,24 @@ const startSession = async (appointmentId, userId, userName) => {
   }
 
   // Calculate appointment time window (start and end)
-  const appointmentStartDateTime = new Date(appointment.appointmentDate);
+  // Handle timezone correctly - extract date components and combine with time string
+  let appointmentDateObj;
+  if (appointment.appointmentDate instanceof Date) {
+    appointmentDateObj = new Date(appointment.appointmentDate);
+  } else {
+    appointmentDateObj = new Date(appointment.appointmentDate);
+  }
+  
+  // Get date components (year, month, day) - use local timezone
+  const year = appointmentDateObj.getFullYear();
+  const month = appointmentDateObj.getMonth();
+  const day = appointmentDateObj.getDate();
+  
+  // Parse appointment time (HH:MM format) - this is in local timezone
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
-  appointmentStartDateTime.setHours(startHours, startMinutes, 0, 0);
+  
+  // Create appointment start datetime in local timezone
+  const appointmentStartDateTime = new Date(year, month, day, startHours, startMinutes, 0, 0);
   
   // Get appointment duration (default 30 minutes if not set)
   const duration = appointment.appointmentDuration || 30;
@@ -61,8 +76,7 @@ const startSession = async (appointmentId, userId, userName) => {
   if (appointment.appointmentEndTime) {
     // Use stored end time if available
     const [endHours, endMinutes] = appointment.appointmentEndTime.split(':').map(Number);
-    appointmentEndDateTime = new Date(appointment.appointmentDate);
-    appointmentEndDateTime.setHours(endHours, endMinutes, 0, 0);
+    appointmentEndDateTime = new Date(year, month, day, endHours, endMinutes, 0, 0);
   } else {
     // Calculate from start time + duration
     appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
