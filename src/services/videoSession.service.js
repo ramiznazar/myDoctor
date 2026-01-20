@@ -48,15 +48,43 @@ const startSession = async (appointmentId, userId, userName) => {
     throw new Error('Video call is only available for online appointments');
   }
 
-  // Check if appointment time has started (allow 5 minutes early)
-  const appointmentDateTime = new Date(appointment.appointmentDate);
-  const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
-  appointmentDateTime.setHours(hours, minutes, 0, 0);
-  const fiveMinutesEarly = new Date(appointmentDateTime.getTime() - 5 * 60 * 1000);
+  // Calculate appointment time window (start and end)
+  const appointmentStartDateTime = new Date(appointment.appointmentDate);
+  const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
+  appointmentStartDateTime.setHours(startHours, startMinutes, 0, 0);
+  
+  // Get appointment duration (default 30 minutes if not set)
+  const duration = appointment.appointmentDuration || 30;
+  
+  // Calculate appointment end time
+  let appointmentEndDateTime;
+  if (appointment.appointmentEndTime) {
+    // Use stored end time if available
+    const [endHours, endMinutes] = appointment.appointmentEndTime.split(':').map(Number);
+    appointmentEndDateTime = new Date(appointment.appointmentDate);
+    appointmentEndDateTime.setHours(endHours, endMinutes, 0, 0);
+  } else {
+    // Calculate from start time + duration
+    appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
+    // Update appointment with calculated end time if not set
+    if (!appointment.appointmentEndTime) {
+      const endTimeStr = `${appointmentEndDateTime.getHours().toString().padStart(2, '0')}:${appointmentEndDateTime.getMinutes().toString().padStart(2, '0')}`;
+      appointment.appointmentEndTime = endTimeStr;
+      appointment.appointmentDuration = duration;
+      await appointment.save();
+    }
+  }
+  
   const now = new Date();
   
-  if (now < fiveMinutesEarly) {
-    throw new Error(`Video call is only available 5 minutes before the scheduled appointment time. Your appointment is scheduled for ${appointmentDateTime.toLocaleString()}.`);
+  // Check if current time is before appointment start time
+  if (now < appointmentStartDateTime) {
+    throw new Error(`Video call is only available during the scheduled appointment time. Your appointment starts at ${appointmentStartDateTime.toLocaleString()}.`);
+  }
+  
+  // Check if current time is after appointment end time
+  if (now > appointmentEndDateTime) {
+    throw new Error(`The appointment time has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`);
   }
 
   // Check if session already exists

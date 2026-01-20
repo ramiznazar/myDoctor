@@ -14,6 +14,7 @@ const createAppointment = async (data) => {
     patientId,
     appointmentDate,
     appointmentTime,
+    appointmentDuration,
     bookingType,
     patientNotes,
     clinicName,
@@ -71,6 +72,23 @@ const createAppointment = async (data) => {
   // Generate appointment number
   const appointmentNumber = `APT-${Date.now()}`;
 
+  // Get appointment duration from doctor's weekly schedule or use provided/default
+  let duration = appointmentDuration || 30; // Default 30 minutes
+  if (!appointmentDuration) {
+    const WeeklySchedule = require('../models/weeklySchedule.model');
+    const weeklySchedule = await WeeklySchedule.findOne({ doctorId });
+    if (weeklySchedule && weeklySchedule.appointmentDuration) {
+      duration = weeklySchedule.appointmentDuration;
+    }
+  }
+
+  // Calculate appointment end time
+  const [hours, minutes] = appointmentTime.split(':').map(Number);
+  const appointmentStartDateTime = new Date(appointmentDate);
+  appointmentStartDateTime.setHours(hours, minutes, 0, 0);
+  const appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
+  const appointmentEndTime = `${appointmentEndDateTime.getHours().toString().padStart(2, '0')}:${appointmentEndDateTime.getMinutes().toString().padStart(2, '0')}`;
+
   // Generate video call link if online booking
   let videoCallLink = null;
   if (bookingType === 'ONLINE') {
@@ -82,6 +100,8 @@ const createAppointment = async (data) => {
     patientId,
     appointmentDate: new Date(appointmentDate),
     appointmentTime,
+    appointmentDuration: duration,
+    appointmentEndTime,
     bookingType: bookingType || 'VISIT',
     patientNotes,
     clinicName,

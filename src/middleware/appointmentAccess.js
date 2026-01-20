@@ -27,6 +27,69 @@ const isAppointmentTimeStarted = (appointmentDate, appointmentTime) => {
 };
 
 /**
+ * Helper function to check if current time is within appointment window
+ * @param {Object} appointment - Appointment object with appointmentDate, appointmentTime, appointmentEndTime, appointmentDuration
+ * @returns {Object} { isValid: boolean, message: string, startTime: Date, endTime: Date }
+ */
+const isWithinAppointmentWindow = (appointment) => {
+  if (!appointment || !appointment.appointmentDate || !appointment.appointmentTime) {
+    return {
+      isValid: false,
+      message: 'Invalid appointment data',
+      startTime: null,
+      endTime: null
+    };
+  }
+
+  const now = new Date();
+  
+  // Calculate appointment start time
+  const appointmentStartDateTime = new Date(appointment.appointmentDate);
+  const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
+  appointmentStartDateTime.setHours(startHours, startMinutes, 0, 0);
+  
+  // Calculate appointment end time
+  let appointmentEndDateTime;
+  if (appointment.appointmentEndTime) {
+    const [endHours, endMinutes] = appointment.appointmentEndTime.split(':').map(Number);
+    appointmentEndDateTime = new Date(appointment.appointmentDate);
+    appointmentEndDateTime.setHours(endHours, endMinutes, 0, 0);
+  } else {
+    // Calculate from duration (default 30 minutes)
+    const duration = appointment.appointmentDuration || 30;
+    appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
+  }
+  
+  // Check if current time is before start time
+  if (now < appointmentStartDateTime) {
+    return {
+      isValid: false,
+      message: `Video call is only available during the scheduled appointment time. Your appointment starts at ${appointmentStartDateTime.toLocaleString()}.`,
+      startTime: appointmentStartDateTime,
+      endTime: appointmentEndDateTime
+    };
+  }
+  
+  // Check if current time is after end time
+  if (now > appointmentEndDateTime) {
+    return {
+      isValid: false,
+      message: `The appointment time has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`,
+      startTime: appointmentStartDateTime,
+      endTime: appointmentEndDateTime
+    };
+  }
+  
+  // Time is within window
+  return {
+    isValid: true,
+    message: null,
+    startTime: appointmentStartDateTime,
+    endTime: appointmentEndDateTime
+  };
+};
+
+/**
  * Middleware to check appointment access for communication
  * Requires:
  * 1. Appointment must be CONFIRMED (doctor accepted)
@@ -157,7 +220,8 @@ const requireConfirmedAppointment = asyncHandler(async (req, res, next) => {
 module.exports = {
   requireAppointmentAccess,
   requireConfirmedAppointment,
-  isAppointmentTimeStarted
+  isAppointmentTimeStarted,
+  isWithinAppointmentWindow
 };
 
 

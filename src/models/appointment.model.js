@@ -19,6 +19,16 @@ const appointmentSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  appointmentDuration: {
+    type: Number,
+    default: 30, // Default 30 minutes
+    min: 15,
+    max: 120
+  },
+  appointmentEndTime: {
+    type: String,
+    default: null // Calculated from appointmentTime + duration
+  },
   bookingType: {
     type: String,
     enum: ["VISIT", "ONLINE"],
