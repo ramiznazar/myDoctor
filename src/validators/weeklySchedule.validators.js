@@ -61,7 +61,9 @@ const updateTimeSlotValidator = z.object({
  */
 const updateAppointmentDurationValidator = z.object({
   body: z.object({
-    duration: z.enum([15, 30, 45, 60], 'Duration must be 15, 30, 45, or 60 minutes')
+    duration: z.coerce.number().refine((val) => [15, 30, 45, 60].includes(val), {
+      message: 'Duration must be 15, 30, 45, or 60 minutes'
+    })
   })
 });
 
