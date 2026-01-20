@@ -12,24 +12,35 @@ const parseAppointmentDate = (appointmentDate) => {
   }
   
   // If it's a Date object (from MongoDB), extract the date components
-  // IMPORTANT: Use getFullYear/getMonth/getDate (local timezone methods)
-  // NOT getUTCFullYear/getUTCMonth/getUTCDate, because appointment times are in local timezone
+  // CRITICAL: MongoDB stores dates in UTC, but appointments are created with local dates
+  // We need to get the date as the user intended it, not as UTC interprets it
   if (appointmentDate instanceof Date) {
-    const year = appointmentDate.getFullYear();
-    const month = appointmentDate.getMonth();
-    const day = appointmentDate.getDate();
+    // Try to get the date from ISO string first (most reliable)
+    const isoString = appointmentDate.toISOString();
+    const dateOnly = isoString.split('T')[0]; // Get YYYY-MM-DD part
+    const [y, m, d] = dateOnly.split('-').map(Number);
     
-    // Also log UTC components for debugging
+    // Also get local components for comparison
+    const localYear = appointmentDate.getFullYear();
+    const localMonth = appointmentDate.getMonth();
+    const localDay = appointmentDate.getDate();
     const utcYear = appointmentDate.getUTCFullYear();
     const utcMonth = appointmentDate.getUTCMonth();
     const utcDay = appointmentDate.getUTCDate();
     
+    // Use ISO date components (from UTC storage) - this is what was originally stored
+    // This ensures we get the correct date regardless of server timezone
+    const year = y;
+    const month = m - 1; // JavaScript months are 0-indexed
+    const day = d;
+    
     console.log('📅 [Date Parse] Date object parsed:', {
-      originalISO: appointmentDate.toISOString(),
+      originalISO: isoString,
       originalLocal: appointmentDate.toString(),
-      usingLocal: { year, month, day },
-      utcComponents: { year: utcYear, month: utcMonth, day: utcDay },
-      difference: (year !== utcYear || month !== utcMonth || day !== utcDay) ? 'DIFFERENT' : 'SAME'
+      usingISO: { year, month: month + 1, day },
+      localComponents: { year: localYear, month: localMonth + 1, day: localDay },
+      utcComponents: { year: utcYear, month: utcMonth + 1, day: utcDay },
+      difference: (year !== localYear || month !== localMonth || day !== localDay) ? 'DIFFERENT' : 'SAME'
     });
     
     return { year, month, day };
@@ -158,13 +169,23 @@ const isWithinAppointmentWindow = (appointment) => {
   let appointmentEndDateTime;
   if (appointment.appointmentEndTime) {
     const [endHours, endMinutes] = appointment.appointmentEndTime.split(':').map(Number);
-    // Handle end time that might be on the next day (e.g., 11:55 PM appointment might end at 12:25 AM next day)
+    
+    // Handle end time that might be on the next day
+    // For example: 12:00 AM to 1:00 AM means end is on the same day
+    // But 11:00 PM to 12:30 AM means end is on the next day
     let endYear = year;
     let endMonth = month;
     let endDay = day;
     
-    // If end time is earlier than start time (e.g., 00:30 vs 23:30), it's the next day
-    if (endHours < startHours || (endHours === startHours && endMinutes < startMinutes)) {
+    // Check if end time is on the next day
+    // This happens when end time is earlier than start time (e.g., 00:30 vs 23:30)
+    // OR when both are on same day but end time would logically be next day
+    const startTimeMinutes = startHours * 60 + startMinutes;
+    const endTimeMinutes = endHours * 60 + endMinutes;
+    
+    // If end time is significantly earlier than start (more than 12 hours difference),
+    // it's likely on the next day
+    if (endTimeMinutes < startTimeMinutes && (startTimeMinutes - endTimeMinutes) > 12 * 60) {
       // End time is on the next day
       const nextDay = new Date(year, month, day + 1);
       endYear = nextDay.getFullYear();
@@ -173,6 +194,20 @@ const isWithinAppointmentWindow = (appointment) => {
     }
     
     appointmentEndDateTime = new Date(endYear, endMonth, endDay, endHours, endMinutes, 0, 0);
+    
+    // Additional validation: if calculated end time is before start time, it must be next day
+    if (appointmentEndDateTime < appointmentStartDateTime) {
+      const nextDay = new Date(year, month, day + 1);
+      appointmentEndDateTime = new Date(
+        nextDay.getFullYear(),
+        nextDay.getMonth(),
+        nextDay.getDate(),
+        endHours,
+        endMinutes,
+        0,
+        0
+      );
+    }
   } else {
     // Calculate from duration (default 30 minutes)
     const duration = appointment.appointmentDuration || 30;
@@ -245,6 +280,21 @@ const isWithinAppointmentWindow = (appointment) => {
     }
   });
   
+  // IMPORTANT: Check "after end" FIRST to give correct error message when time has passed
+  // Check if current time is after end time
+  if (now > appointmentEndDateTime) {
+    console.log('❌ [Window Check] BLOCKED: Time is after end time');
+    console.log(`   Current: ${now.toString()} (${now.getTime()})`);
+    console.log(`   End: ${appointmentEndDateTime.toString()} (${appointmentEndDateTime.getTime()})`);
+    console.log(`   Difference: ${timeDiffFromEnd.toFixed(2)} minutes after end`);
+    return {
+      isValid: false,
+      message: `The appointment time has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`,
+      startTime: appointmentStartDateTime,
+      endTime: appointmentEndDateTime
+    };
+  }
+  
   // Check if current time is before earliest allowed time (appointment start - buffer)
   if (now < earliestAllowedTime) {
     console.log('❌ [Window Check] BLOCKED: Time is before earliest allowed time');
@@ -255,20 +305,6 @@ const isWithinAppointmentWindow = (appointment) => {
     return {
       isValid: false,
       message: `Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}.`,
-      startTime: appointmentStartDateTime,
-      endTime: appointmentEndDateTime
-    };
-  }
-  
-  // Check if current time is after end time
-  if (now > appointmentEndDateTime) {
-    console.log('❌ [Window Check] BLOCKED: Time is after end time');
-    console.log(`   Current: ${now.toString()} (${now.getTime()})`);
-    console.log(`   End: ${appointmentEndDateTime.toString()} (${appointmentEndDateTime.getTime()})`);
-    console.log(`   Difference: ${timeDiffFromEnd.toFixed(2)} minutes after end`);
-    return {
-      isValid: false,
-      message: `The appointment time has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`,
       startTime: appointmentStartDateTime,
       endTime: appointmentEndDateTime
     };
@@ -418,7 +454,9 @@ const requireConfirmedAppointment = asyncHandler(async (req, res, next) => {
 module.exports = {
   requireAppointmentAccess,
   requireConfirmedAppointment,
-  isAppointmentTimeStarted
+  isAppointmentTimeStarted,
+  isWithinAppointmentWindow,
+  parseAppointmentDate
 };
 
 

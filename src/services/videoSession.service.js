@@ -52,21 +52,22 @@ const startSession = async (appointmentId, userId, userName) => {
   // Handle timezone correctly - parse appointment date properly
   let year, month, day;
   
-  // Parse appointment date - handle both Date objects and strings
   if (appointment.appointmentDate instanceof Date) {
-    // For Date objects, use local date components (what user expects)
-    year = appointment.appointmentDate.getFullYear();
-    month = appointment.appointmentDate.getMonth();
-    day = appointment.appointmentDate.getDate();
+    // Extract date from ISO string to avoid timezone issues
+    const isoString = appointment.appointmentDate.toISOString();
+    const dateOnly = isoString.split('T')[0]; // Get YYYY-MM-DD part
+    const [y, m, d] = dateOnly.split('-').map(Number);
+    year = y;
+    month = m - 1; // JavaScript months are 0-indexed
+    day = d;
   } else {
-    // For strings, parse directly to avoid timezone conversion
+    // For strings, parse directly
     const dateStr = appointment.appointmentDate.toString();
-    
     if (dateStr.includes('T')) {
       const dateOnly = dateStr.split('T')[0];
       const [y, m, d] = dateOnly.split('-').map(Number);
       year = y;
-      month = m - 1; // JavaScript months are 0-indexed
+      month = m - 1;
       day = d;
     } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
       const [y, m, d] = dateStr.split('-').map(Number);
@@ -74,11 +75,13 @@ const startSession = async (appointmentId, userId, userName) => {
       month = m - 1;
       day = d;
     } else {
-      // Fallback
       const dateObj = new Date(appointment.appointmentDate);
-      year = dateObj.getFullYear();
-      month = dateObj.getMonth();
-      day = dateObj.getDate();
+      const isoString = dateObj.toISOString();
+      const dateOnly = isoString.split('T')[0];
+      const [y, m, d] = dateOnly.split('-').map(Number);
+      year = y;
+      month = m - 1;
+      day = d;
     }
   }
   
@@ -96,7 +99,22 @@ const startSession = async (appointmentId, userId, userName) => {
   if (appointment.appointmentEndTime) {
     // Use stored end time if available
     const [endHours, endMinutes] = appointment.appointmentEndTime.split(':').map(Number);
-    appointmentEndDateTime = new Date(year, month, day, endHours, endMinutes, 0, 0);
+    
+    // Handle end time that might be on the next day (e.g., 11:55 PM appointment might end at 12:25 AM next day)
+    let endYear = year;
+    let endMonth = month;
+    let endDay = day;
+    
+    // If end time is earlier than start time (e.g., 00:30 vs 23:30), it's the next day
+    if (endHours < startHours || (endHours === startHours && endMinutes < startMinutes)) {
+      // End time is on the next day
+      const nextDay = new Date(year, month, day + 1);
+      endYear = nextDay.getFullYear();
+      endMonth = nextDay.getMonth();
+      endDay = nextDay.getDate();
+    }
+    
+    appointmentEndDateTime = new Date(endYear, endMonth, endDay, endHours, endMinutes, 0, 0);
   } else {
     // Calculate from start time + duration
     appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
@@ -116,15 +134,26 @@ const startSession = async (appointmentId, userId, userName) => {
   const bufferTime = 2 * 60 * 1000; // 2 minutes in milliseconds
   const earliestAllowedTime = new Date(appointmentStartDateTime.getTime() - bufferTime);
   
-  // Check if current time is before earliest allowed time (appointment start - buffer)
-  if (now < earliestAllowedTime) {
-    throw new Error(`Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}.`);
+  // IMPORTANT: Check "after end" FIRST to give correct error message when time has passed
+  // Check if current time is after appointment end time
+  if (now > appointmentEndDateTime) {
+    const timeDiffFromEnd = (now.getTime() - appointmentEndDateTime.getTime()) / (60 * 1000);
+    console.log('❌ [Video Session] BLOCKED: Time is after end time');
+    console.log(`   Current: ${now.toString()} (${now.getTime()})`);
+    console.log(`   End: ${appointmentEndDateTime.toString()} (${appointmentEndDateTime.getTime()})`);
+    console.log(`   Difference: ${timeDiffFromEnd.toFixed(2)} minutes after end`);
+    throw new Error(`The appointment time window has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`);
   }
   
-  // Check if current time is after appointment end time
-  // This is the only hard limit - once the window has passed, the call is no longer available
-  if (now > appointmentEndDateTime) {
-    throw new Error(`The appointment time window has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`);
+  // Check if current time is before earliest allowed time (appointment start - buffer)
+  if (now < earliestAllowedTime) {
+    const timeDiffFromStart = (now.getTime() - appointmentStartDateTime.getTime()) / (60 * 1000);
+    console.log('❌ [Video Session] BLOCKED: Time is before earliest allowed time');
+    console.log(`   Current: ${now.toString()} (${now.getTime()})`);
+    console.log(`   Earliest: ${earliestAllowedTime.toString()} (${earliestAllowedTime.getTime()})`);
+    console.log(`   Start: ${appointmentStartDateTime.toString()} (${appointmentStartDateTime.getTime()})`);
+    console.log(`   Difference: ${timeDiffFromStart.toFixed(2)} minutes (negative = before start)`);
+    throw new Error(`Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}.`);
   }
   
   // If we reach here, the user is within the appointment window
