@@ -92,10 +92,10 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
 
   const pharmacyData = Array.from(pharmacyMap.values())[0];
   const tax = subtotal * 0.1; // 10% tax (you can make this configurable)
-  const initialShipping = shippingAddress ? 10 : 0; // Initial shipping estimate (you can make this configurable)
-  const initialTotal = subtotal + tax + initialShipping;
+  const shipping = shippingAddress ? 10 : 0; // Fixed shipping fee (you can make this configurable)
+  const total = subtotal + tax + shipping;
 
-  // Create order
+  // Create order first (orderNumber will be auto-generated in pre-save hook)
   const order = await Order.create({
     patientId,
     pharmacyId: pharmacyData.pharmacyId,
@@ -103,22 +103,58 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     items: orderItems,
     subtotal,
     tax,
-    shipping: initialShipping, // Initial shipping estimate
-    initialShipping: initialShipping,
-    total: initialTotal, // Initial total
-    initialTotal: initialTotal,
+    shipping: shipping, // Final shipping fee
+    total: total, // Final total
     shippingAddress: shippingAddress || {},
-    paymentMethod,
-    status: 'PENDING',
-    paymentStatus: 'PENDING',
-    requiresPaymentUpdate: false
+    paymentMethod: paymentMethod || 'DUMMY',
+    status: 'CONFIRMED', // Order is confirmed since payment is done
+    paymentStatus: 'PENDING' // Will be updated to PAID after transaction
   });
 
-  // Update product stock
+  // Process payment immediately after order creation
+  const Transaction = require('../models/transaction.model');
+  
+  // Create transaction for payment
+  const transaction = await Transaction.create({
+    userId: patientId,
+    amount: total,
+    currency: 'USD',
+    relatedProductId: orderItems[0]?.productId || null, // For backward compatibility
+    relatedOrderId: order._id, // Link to order
+    status: 'SUCCESS',
+    provider: paymentMethod || 'DUMMY',
+    providerReference: `ORD-${order.orderNumber || order._id}`
+  });
+
+  // Link transaction to order and update payment status
+  order.transactionId = transaction._id;
+  order.paymentStatus = 'PAID';
+  await order.save();
+
+  // Update product stock (only after successful payment)
   for (const item of items) {
     const product = products.find(p => p._id.toString() === item.productId.toString());
     product.stock -= item.quantity;
     await product.save();
+  }
+
+  // Credit seller (owner) balance
+  const balanceService = require('./balance.service');
+  try {
+    const sellerAmount = subtotal; // Credit only the product subtotal, not shipping
+    await balanceService.creditBalance(
+      pharmacyData.ownerId.toString(),
+      sellerAmount,
+      'ORDER',
+      {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        transactionId: transaction._id.toString()
+      }
+    );
+  } catch (error) {
+    // Log error but don't fail the order creation
+    console.error('Error crediting seller balance for order:', error);
   }
 
   return order;
@@ -346,94 +382,29 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
 
 /**
  * Update shipping fee for order
- * @param {string} orderId - Order ID
- * @param {number} shippingFee - New shipping fee
- * @param {string} userId - User ID (for authorization)
- * @param {string} userRole - User role
- * @returns {Promise<Object>} Updated order
+ * @deprecated Shipping fee is now set during checkout. This function is kept for backward compatibility but throws an error.
  */
 const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
-  const order = await Order.findById(orderId);
-
-  if (!order) {
-    throw new Error('Order not found');
-  }
-
-  // Authorization check
-  if (userRole === 'DOCTOR' && order.ownerId.toString() !== userId.toString()) {
-    throw new Error('Unauthorized: You can only update orders for your pharmacy');
-  }
-
-  if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
-    throw new Error('Unauthorized: Only pharmacy owners and admins can update shipping fee');
-  }
-
-  // Can only update shipping if order is PENDING or CONFIRMED and not paid yet
-  if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
-    throw new Error(`Cannot update shipping fee for order with status: ${order.status}`);
-  }
-
-  if (order.paymentStatus === 'PAID') {
-    throw new Error('Cannot update shipping fee for an order that has already been paid');
-  }
-
-  if (shippingFee < 0) {
-    throw new Error('Shipping fee cannot be negative');
-  }
-
-  // Calculate new total
-  const oldShipping = order.shipping;
-  const newShipping = shippingFee;
-  const shippingDifference = newShipping - oldShipping;
-  const newTotal = order.total + shippingDifference;
-
-  // Update order
-  order.shipping = newShipping;
-  order.finalShipping = newShipping;
-  order.shippingUpdatedAt = new Date();
-  order.total = newTotal;
-
-  // If order was already paid, mark as requiring payment update
-  if (order.paymentStatus === 'PAID' && shippingDifference > 0) {
-    order.requiresPaymentUpdate = true;
-    order.paymentStatus = 'PARTIAL'; // Partial payment - patient needs to pay shipping difference
-  } else if (order.paymentStatus === 'PENDING' && shippingDifference !== 0) {
-    // If not paid yet, just update the total
-    order.requiresPaymentUpdate = false;
-  }
-
-  await order.save();
-
-  return order;
+  throw new Error('Shipping fee cannot be updated. Payment is processed during checkout with the final shipping fee.');
 };
 
 /**
- * Pay for order (including shipping difference if any)
- * @param {string} orderId - Order ID
- * @param {string} paymentMethod - Payment method
- * @returns {Promise<Object>} Updated order and transaction
+ * Pay for order
+ * @deprecated Payment is now processed during checkout. This function is kept for backward compatibility but throws an error.
  */
 const payForOrder = async (orderId, paymentMethod = 'DUMMY') => {
   const Order = require('../models/order.model');
-  
-  // Check if order exists and shipping fee is set
   const order = await Order.findById(orderId);
   
   if (!order) {
     throw new Error('Order not found');
   }
 
-  // Cannot pay if shipping fee is not set yet
-  if (order.finalShipping === null || order.finalShipping === undefined) {
-    throw new Error('Cannot pay for order: Shipping fee has not been set by the pharmacy owner yet');
+  if (order.paymentStatus === 'PAID') {
+    throw new Error('Order is already paid. Payment is processed during checkout.');
   }
 
-  const paymentService = require('./payment.service');
-  
-  // Use payment service to process the payment
-  const result = await paymentService.processOrderPayment(orderId, paymentMethod);
-  
-  return result;
+  throw new Error('Payment must be processed during checkout. This endpoint is no longer used.');
 };
 
 /**

@@ -67,16 +67,13 @@ exports.updateStatus = asyncHandler(async (req, res) => {
 
 /**
  * Update shipping fee
+ * @deprecated Shipping fee is now set during checkout
  */
 exports.updateShippingFee = asyncHandler(async (req, res) => {
-  const { shippingFee } = req.body;
-  const result = await orderService.updateShippingFee(
-    req.params.id,
-    shippingFee,
-    req.userId,
-    req.userRole
-  );
-  res.json({ success: true, message: 'Shipping fee updated successfully', data: result });
+  res.status(400).json({ 
+    success: false, 
+    message: 'Shipping fee cannot be updated. Payment is processed during checkout with the final shipping fee.' 
+  });
 });
 
 /**

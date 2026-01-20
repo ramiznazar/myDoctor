@@ -70,8 +70,9 @@ router.put(
 
 /**
  * @route   PUT /api/orders/:id/shipping
- * @desc    Update shipping fee
+ * @desc    Update shipping fee (DEPRECATED - Shipping fee is now set during checkout)
  * @access  Private (Doctor, Admin)
+ * @deprecated This route is kept for backward compatibility but returns an error
  */
 router.put(
   '/:id/shipping',

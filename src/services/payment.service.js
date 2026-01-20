@@ -151,9 +151,9 @@ const processOrderPayment = async (orderId, paymentMethod = 'DUMMY', amount = nu
     throw new Error('Order not found');
   }
 
-  // Cannot pay if shipping fee is not set yet
-  if (order.finalShipping === null || order.finalShipping === undefined) {
-    throw new Error('Cannot pay for order: Shipping fee has not been set by the pharmacy owner yet');
+  // Check if order is already paid (payment should happen during checkout now)
+  if (order.paymentStatus === 'PAID') {
+    throw new Error('Order already paid. Payment is processed during checkout.');
   }
 
   // Calculate amount to pay
