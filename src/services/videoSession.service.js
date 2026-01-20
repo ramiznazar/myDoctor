@@ -49,23 +49,43 @@ const startSession = async (appointmentId, userId, userName) => {
   }
 
   // Calculate appointment time window (start and end)
-  // Handle timezone correctly - extract date components and combine with time string
-  let appointmentDateObj;
-  if (appointment.appointmentDate instanceof Date) {
-    appointmentDateObj = new Date(appointment.appointmentDate);
-  } else {
-    appointmentDateObj = new Date(appointment.appointmentDate);
-  }
+  // Handle timezone correctly - parse appointment date properly
+  let year, month, day;
   
-  // Get date components (year, month, day) - use local timezone
-  const year = appointmentDateObj.getFullYear();
-  const month = appointmentDateObj.getMonth();
-  const day = appointmentDateObj.getDate();
+  // Parse appointment date - handle both Date objects and strings
+  if (appointment.appointmentDate instanceof Date) {
+    // For Date objects, use local date components (what user expects)
+    year = appointment.appointmentDate.getFullYear();
+    month = appointment.appointmentDate.getMonth();
+    day = appointment.appointmentDate.getDate();
+  } else {
+    // For strings, parse directly to avoid timezone conversion
+    const dateStr = appointment.appointmentDate.toString();
+    
+    if (dateStr.includes('T')) {
+      const dateOnly = dateStr.split('T')[0];
+      const [y, m, d] = dateOnly.split('-').map(Number);
+      year = y;
+      month = m - 1; // JavaScript months are 0-indexed
+      day = d;
+    } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      year = y;
+      month = m - 1;
+      day = d;
+    } else {
+      // Fallback
+      const dateObj = new Date(appointment.appointmentDate);
+      year = dateObj.getFullYear();
+      month = dateObj.getMonth();
+      day = dateObj.getDate();
+    }
+  }
   
   // Parse appointment time (HH:MM format) - this is in local timezone
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
   
-  // Create appointment start datetime in local timezone
+  // Create appointment start datetime using local timezone constructor
   const appointmentStartDateTime = new Date(year, month, day, startHours, startMinutes, 0, 0);
   
   // Get appointment duration (default 30 minutes if not set)
