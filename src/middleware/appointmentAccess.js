@@ -5,9 +5,10 @@ const asyncHandler = require('./asyncHandler');
  * Helper function to check if appointment time has started
  * @param {Date} appointmentDate - Appointment date
  * @param {String} appointmentTime - Appointment time (HH:MM format)
- * @returns {boolean} True if appointment time has started
+ * @param {Number} bufferMinutes - Buffer time in minutes before appointment (default: 2 minutes)
+ * @returns {boolean} True if appointment time has started (or within buffer)
  */
-const isAppointmentTimeStarted = (appointmentDate, appointmentTime) => {
+const isAppointmentTimeStarted = (appointmentDate, appointmentTime, bufferMinutes = 2) => {
   if (!appointmentDate || !appointmentTime) {
     return false;
   }
@@ -15,15 +16,32 @@ const isAppointmentTimeStarted = (appointmentDate, appointmentTime) => {
   // Parse appointment time (HH:MM format)
   const [hours, minutes] = appointmentTime.split(':').map(Number);
   
-  // Create appointment datetime
-  const appointmentDateTime = new Date(appointmentDate);
+  // Create appointment datetime - ensure we're working with local time, not UTC
+  // Convert appointmentDate to a proper Date object if it's a string
+  const dateObj = appointmentDate instanceof Date ? appointmentDate : new Date(appointmentDate);
+  const appointmentDateTime = new Date(dateObj);
   appointmentDateTime.setHours(hours, minutes, 0, 0);
   
   // Get current time
   const now = new Date();
   
-  // Check if current time is >= appointment time
-  return now >= appointmentDateTime;
+  // Allow buffer time before appointment (e.g., 2 minutes early)
+  // This accounts for clock differences and allows users to join slightly early
+  const bufferTime = bufferMinutes * 60 * 1000; // Convert to milliseconds
+  const earliestAllowedTime = new Date(appointmentDateTime.getTime() - bufferTime);
+  
+  // Debug logging
+  console.log('🕐 [Time Check]', {
+    now: now.toISOString(),
+    appointmentDateTime: appointmentDateTime.toISOString(),
+    earliestAllowedTime: earliestAllowedTime.toISOString(),
+    timeDifference: now.getTime() - appointmentDateTime.getTime(),
+    bufferMinutes,
+    isAllowed: now >= earliestAllowedTime
+  });
+  
+  // Check if current time is >= earliest allowed time (appointment time - buffer)
+  return now >= earliestAllowedTime;
 };
 
 /**
@@ -60,11 +78,16 @@ const isWithinAppointmentWindow = (appointment) => {
     appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
   }
   
-  // Check if current time is before start time
-  if (now < appointmentStartDateTime) {
+  // Allow 2 minutes buffer before appointment start time to account for clock differences
+  // This helps with timezone/clock sync issues but users can join anytime during the window
+  const bufferTime = 2 * 60 * 1000; // 2 minutes in milliseconds
+  const earliestAllowedTime = new Date(appointmentStartDateTime.getTime() - bufferTime);
+  
+  // Check if current time is before earliest allowed time (appointment start - buffer)
+  if (now < earliestAllowedTime) {
     return {
       isValid: false,
-      message: `Video call is only available during the scheduled appointment time. Your appointment starts at ${appointmentStartDateTime.toLocaleString()}.`,
+      message: `Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}.`,
       startTime: appointmentStartDateTime,
       endTime: appointmentEndDateTime
     };
@@ -149,17 +172,17 @@ const requireAppointmentAccess = asyncHandler(async (req, res, next) => {
     });
   }
 
-  // Check if appointment time has started
-  if (!isAppointmentTimeStarted(appointment.appointmentDate, appointment.appointmentTime)) {
-    const appointmentDateTime = new Date(appointment.appointmentDate);
-    const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
-    appointmentDateTime.setHours(hours, minutes, 0, 0);
-    
+  // Check if current time is within the appointment window (start to end time)
+  // This allows users to join anytime during the appointment window, even if they're late
+  const timeWindowCheck = isWithinAppointmentWindow(appointment);
+  
+  if (!timeWindowCheck.isValid) {
     return res.status(403).json({
       success: false,
-      message: `Communication is only available at the scheduled appointment time. Your appointment is scheduled for ${appointmentDateTime.toLocaleString()}.`,
+      message: timeWindowCheck.message || 'Communication is only available during the scheduled appointment time window.',
       errors: [],
-      appointmentDateTime: appointmentDateTime.toISOString()
+      appointmentDateTime: timeWindowCheck.startTime?.toISOString(),
+      appointmentEndTime: timeWindowCheck.endTime?.toISOString()
     });
   }
 

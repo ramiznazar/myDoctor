@@ -77,15 +77,24 @@ const startSession = async (appointmentId, userId, userName) => {
   
   const now = new Date();
   
-  // Check if current time is before appointment start time
-  if (now < appointmentStartDateTime) {
-    throw new Error(`Video call is only available during the scheduled appointment time. Your appointment starts at ${appointmentStartDateTime.toLocaleString()}.`);
+  // Allow 2 minutes buffer before appointment start time to account for clock differences
+  // Users can join anytime during the appointment window (start to end)
+  const bufferTime = 2 * 60 * 1000; // 2 minutes in milliseconds
+  const earliestAllowedTime = new Date(appointmentStartDateTime.getTime() - bufferTime);
+  
+  // Check if current time is before earliest allowed time (appointment start - buffer)
+  if (now < earliestAllowedTime) {
+    throw new Error(`Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}.`);
   }
   
   // Check if current time is after appointment end time
+  // This is the only hard limit - once the window has passed, the call is no longer available
   if (now > appointmentEndDateTime) {
-    throw new Error(`The appointment time has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`);
+    throw new Error(`The appointment time window has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`);
   }
+  
+  // If we reach here, the user is within the appointment window
+  // They can join anytime between start and end, even if they're late
 
   // Check if session already exists
   let session = await VideoSession.findOne({ appointmentId });
