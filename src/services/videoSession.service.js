@@ -63,11 +63,22 @@ const startSession = async (appointmentId, userId, userName) => {
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
   
   // Get timezone offset from appointment (in minutes)
-  let tzOffsetMinutes = appointment.timezoneOffset;
-  if (tzOffsetMinutes === null || tzOffsetMinutes === undefined) {
+  // Handle both old appointments (no timezone) and new appointments (with timezone)
+  let tzOffsetMinutes;
+  if (appointment.timezoneOffset !== null && appointment.timezoneOffset !== undefined) {
+    tzOffsetMinutes = appointment.timezoneOffset;
+  } else {
+    // Fallback: use server's timezone offset for old appointments
     const testDate = new Date();
     tzOffsetMinutes = -testDate.getTimezoneOffset();
     console.log('⚠️ [Video Session] No timezone stored, using server timezone offset:', tzOffsetMinutes);
+  }
+  
+  // Ensure tzOffsetMinutes is a valid number
+  if (typeof tzOffsetMinutes !== 'number' || isNaN(tzOffsetMinutes)) {
+    const testDate = new Date();
+    tzOffsetMinutes = -testDate.getTimezoneOffset();
+    console.log('⚠️ [Video Session] Invalid timezone offset, using server timezone offset:', tzOffsetMinutes);
   }
   
   // Create appointment start datetime in UTC, then adjust for timezone
