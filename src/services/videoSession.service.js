@@ -49,17 +49,16 @@ const startSession = async (appointmentId, userId, userName) => {
   }
 
   // Calculate appointment time window (start and end)
-  // Handle timezone correctly - parse appointment date properly
+  // Handle timezone correctly - use LOCAL date components
+  // CRITICAL: The appointment date was stored as local midnight, so we must use local components
   let year, month, day;
   
   if (appointment.appointmentDate instanceof Date) {
-    // Extract date from ISO string to avoid timezone issues
-    const isoString = appointment.appointmentDate.toISOString();
-    const dateOnly = isoString.split('T')[0]; // Get YYYY-MM-DD part
-    const [y, m, d] = dateOnly.split('-').map(Number);
-    year = y;
-    month = m - 1; // JavaScript months are 0-indexed
-    day = d;
+    // Use LOCAL date components (getFullYear, getMonth, getDate)
+    // This ensures we get the date as the user intended, not as UTC interprets it
+    year = appointment.appointmentDate.getFullYear();
+    month = appointment.appointmentDate.getMonth();
+    day = appointment.appointmentDate.getDate();
   } else {
     // For strings, parse directly
     const dateStr = appointment.appointmentDate.toString();

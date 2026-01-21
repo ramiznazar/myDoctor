@@ -13,34 +13,31 @@ const parseAppointmentDate = (appointmentDate) => {
   
   // If it's a Date object (from MongoDB), extract the date components
   // CRITICAL: MongoDB stores dates in UTC, but appointments are created with local dates
-  // We need to get the date as the user intended it, not as UTC interprets it
+  // When we stored the date, we stored it as local midnight (e.g., 2026-01-21 00:00:00 local)
+  // MongoDB converts this to UTC (e.g., 2026-01-20 19:00:00 UTC for Pakistan UTC+5)
+  // To get back the original date, we MUST use LOCAL date components (getFullYear, getMonth, getDate)
+  // NOT UTC components, because the date represents a local calendar date
   if (appointmentDate instanceof Date) {
-    // Try to get the date from ISO string first (most reliable)
-    const isoString = appointmentDate.toISOString();
-    const dateOnly = isoString.split('T')[0]; // Get YYYY-MM-DD part
-    const [y, m, d] = dateOnly.split('-').map(Number);
+    // Use LOCAL date components - this is what the user intended
+    // The date was stored as local midnight, so we need local components to reconstruct it
+    const year = appointmentDate.getFullYear();
+    const month = appointmentDate.getMonth();
+    const day = appointmentDate.getDate();
     
-    // Also get local components for comparison
-    const localYear = appointmentDate.getFullYear();
-    const localMonth = appointmentDate.getMonth();
-    const localDay = appointmentDate.getDate();
+    // Also get UTC components for debugging/comparison
     const utcYear = appointmentDate.getUTCFullYear();
     const utcMonth = appointmentDate.getUTCMonth();
     const utcDay = appointmentDate.getUTCDate();
+    const isoString = appointmentDate.toISOString();
+    const isoDateOnly = isoString.split('T')[0];
     
-    // Use ISO date components (from UTC storage) - this is what was originally stored
-    // This ensures we get the correct date regardless of server timezone
-    const year = y;
-    const month = m - 1; // JavaScript months are 0-indexed
-    const day = d;
-    
-    console.log('📅 [Date Parse] Date object parsed:', {
+    console.log('📅 [Date Parse] Date object parsed (using LOCAL components):', {
       originalISO: isoString,
       originalLocal: appointmentDate.toString(),
-      usingISO: { year, month: month + 1, day },
-      localComponents: { year: localYear, month: localMonth + 1, day: localDay },
+      usingLocal: { year, month: month + 1, day },
       utcComponents: { year: utcYear, month: utcMonth + 1, day: utcDay },
-      difference: (year !== localYear || month !== localMonth || day !== localDay) ? 'DIFFERENT' : 'SAME'
+      isoDateOnly: isoDateOnly,
+      timezoneNote: 'Using LOCAL date components because appointment date represents a local calendar date'
     });
     
     return { year, month, day };

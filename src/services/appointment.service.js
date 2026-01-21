@@ -83,29 +83,40 @@ const createAppointment = async (data) => {
   }
 
   // Calculate appointment end time - parse date correctly to avoid timezone issues
+  // CRITICAL: Store date as local midnight to preserve the intended date
   // Extract date components from appointmentDate (could be string or Date)
   let year, month, day;
   if (appointmentDate instanceof Date) {
+    // If it's already a Date, extract local date components
     year = appointmentDate.getFullYear();
     month = appointmentDate.getMonth();
     day = appointmentDate.getDate();
   } else {
-    // Parse date string (YYYY-MM-DD format)
+    // Parse date string (YYYY-MM-DD format) - extract components directly
     const dateStr = appointmentDate.toString();
+    let dateOnly;
     if (dateStr.includes('T')) {
-      const dateOnly = dateStr.split('T')[0];
-      [year, month, day] = dateOnly.split('-').map(Number);
-      month = month - 1; // JavaScript months are 0-indexed
+      dateOnly = dateStr.split('T')[0];
     } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      [year, month, day] = dateStr.split('-').map(Number);
-      month = month - 1; // JavaScript months are 0-indexed
+      dateOnly = dateStr;
     } else {
+      // Fallback: try to parse as Date and get local components
       const dateObj = new Date(appointmentDate);
       year = dateObj.getFullYear();
       month = dateObj.getMonth();
       day = dateObj.getDate();
+      dateOnly = null; // Skip the split below
+    }
+    
+    if (dateOnly) {
+      [year, month, day] = dateOnly.split('-').map(Number);
+      month = month - 1; // JavaScript months are 0-indexed
     }
   }
+  
+  // CRITICAL: Create date at LOCAL midnight (not UTC) to preserve the intended date
+  // This ensures that when stored in MongoDB (as UTC), it represents the correct local date
+  const localMidnightDate = new Date(year, month, day, 0, 0, 0, 0);
   
   const [hours, minutes] = appointmentTime.split(':').map(Number);
   // Create datetime using local timezone constructor
@@ -119,10 +130,11 @@ const createAppointment = async (data) => {
     videoCallLink = `https://videocall.mydoctor.com/${appointmentNumber}`;
   }
 
+  // Store the date as local midnight - this preserves the intended date regardless of timezone
   const appointment = await Appointment.create({
     doctorId,
     patientId,
-    appointmentDate: new Date(appointmentDate),
+    appointmentDate: localMidnightDate, // Store as local midnight, not UTC
     appointmentTime,
     appointmentDuration: duration,
     appointmentEndTime,
