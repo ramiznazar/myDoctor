@@ -65,20 +65,28 @@ const startSession = async (appointmentId, userId, userName) => {
   // Get timezone offset from appointment (in minutes)
   // Handle both old appointments (no timezone) and new appointments (with timezone)
   let tzOffsetMinutes;
+  
   if (appointment.timezoneOffset !== null && appointment.timezoneOffset !== undefined) {
     tzOffsetMinutes = appointment.timezoneOffset;
+    console.log('✅ [Video Session] Using stored timezone offset:', tzOffsetMinutes, 'minutes (UTC' + (tzOffsetMinutes >= 0 ? '+' : '') + Math.floor(tzOffsetMinutes / 60) + ')');
   } else {
-    // Fallback: use server's timezone offset for old appointments
-    const testDate = new Date();
-    tzOffsetMinutes = -testDate.getTimezoneOffset();
-    console.log('⚠️ [Video Session] No timezone stored, using server timezone offset:', tzOffsetMinutes);
+    // CRITICAL FIX: For old appointments without timezone, assume UTC+5 (Pakistan)
+    // Most users are in Pakistan, so this is a reasonable default
+    if (startHours >= 12 && startHours <= 23) {
+      // Afternoon/evening appointment - likely local time (Pakistan)
+      tzOffsetMinutes = 300; // UTC+5
+      console.log('⚠️ [Video Session] No timezone stored, assuming UTC+5 (Pakistan) for afternoon/evening appointment');
+    } else {
+      // Morning appointment - still assume UTC+5 as default
+      tzOffsetMinutes = 300; // UTC+5
+      console.log('⚠️ [Video Session] No timezone stored, defaulting to UTC+5 (Pakistan)');
+    }
   }
   
   // Ensure tzOffsetMinutes is a valid number
   if (typeof tzOffsetMinutes !== 'number' || isNaN(tzOffsetMinutes)) {
-    const testDate = new Date();
-    tzOffsetMinutes = -testDate.getTimezoneOffset();
-    console.log('⚠️ [Video Session] Invalid timezone offset, using server timezone offset:', tzOffsetMinutes);
+    tzOffsetMinutes = 300; // Default to UTC+5 (Pakistan)
+    console.log('⚠️ [Video Session] Invalid timezone offset, defaulting to UTC+5 (Pakistan)');
   }
   
   // Create appointment start datetime in UTC, then adjust for timezone

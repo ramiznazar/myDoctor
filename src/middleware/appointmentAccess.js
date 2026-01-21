@@ -187,37 +187,71 @@ const isWithinAppointmentWindow = (appointment) => {
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
   
   // Get timezone offset from appointment (in minutes, e.g., 300 for UTC+5)
-  // If not stored, default to server's timezone offset
+  // CRITICAL: For old appointments without timezone, we need to handle them differently
   let tzOffsetMinutes;
+  
+  console.log('🔍 [Window Check] Checking timezone:', {
+    hasTimezone: !!appointment.timezone,
+    timezone: appointment.timezone,
+    hasTimezoneOffset: appointment.timezoneOffset !== null && appointment.timezoneOffset !== undefined,
+    timezoneOffset: appointment.timezoneOffset,
+    appointmentTime: appointment.appointmentTime
+  });
+  
   if (appointment.timezoneOffset !== null && appointment.timezoneOffset !== undefined) {
     tzOffsetMinutes = appointment.timezoneOffset;
+    console.log('✅ [Window Check] Using stored timezone offset:', tzOffsetMinutes, 'minutes (UTC' + (tzOffsetMinutes >= 0 ? '+' : '') + Math.floor(tzOffsetMinutes / 60) + ')');
   } else {
-    // Fallback: use server's timezone offset for old appointments
-    const testDate = new Date();
-    tzOffsetMinutes = -testDate.getTimezoneOffset(); // JavaScript offset is opposite
-    console.log('⚠️ [Window Check] No timezone stored, using server timezone offset:', tzOffsetMinutes);
+    // CRITICAL FIX: For old appointments without timezone, the appointment time was likely
+    // created in the user's local timezone (Pakistan UTC+5), but stored without timezone info
+    // Since we can't know for sure, we'll try to infer it from the appointment time pattern
+    // 
+    // However, the safest approach for now is to assume the appointment time is already in UTC
+    // This means old appointments will be interpreted as UTC, which may cause issues
+    // 
+    // BETTER: We should update old appointments to have timezone info, but for now:
+    // If the appointment time is in a reasonable range (e.g., 9 AM - 9 PM), it's likely local time
+    // For Pakistan, common appointment times are 9 AM - 9 PM local = 4 AM - 4 PM UTC
+    // If the appointment time is 17:45 (5:45 PM), it's very likely in local time (Pakistan)
+    // So we'll assume UTC+5 (300 minutes) for appointments in the 12:00-23:59 range
+    if (startHours >= 12 && startHours <= 23) {
+      // Likely a local time appointment (afternoon/evening in Pakistan)
+      // Assume UTC+5 (Pakistan timezone)
+      tzOffsetMinutes = 300; // UTC+5
+      console.log('⚠️ [Window Check] No timezone stored, but appointment time suggests local time (afternoon/evening)');
+      console.log('⚠️ [Window Check] Assuming UTC+5 (Pakistan) for this appointment');
+    } else {
+      // Morning appointments - still assume UTC+5 (Pakistan) as default since most users are in Pakistan
+      tzOffsetMinutes = 300; // UTC+5
+      console.log('⚠️ [Window Check] No timezone stored, defaulting to UTC+5 (Pakistan) for morning appointment');
+    }
   }
   
   // Ensure tzOffsetMinutes is a valid number
   if (typeof tzOffsetMinutes !== 'number' || isNaN(tzOffsetMinutes)) {
-    const testDate = new Date();
-    tzOffsetMinutes = -testDate.getTimezoneOffset();
-    console.log('⚠️ [Window Check] Invalid timezone offset, using server timezone offset:', tzOffsetMinutes);
+    tzOffsetMinutes = 300; // Default to UTC+5 (Pakistan) as fallback
+    console.log('⚠️ [Window Check] Invalid timezone offset, defaulting to UTC+5 (Pakistan)');
   }
   
-  // Create appointment start datetime in UTC, then adjust for timezone
-  // Convert the local time to UTC by subtracting the timezone offset
-  // Example: 17:05 in UTC+5 (300 min offset) = 17:05 - 5 hours = 12:05 UTC
+  // Create appointment start datetime in UTC
+  // CRITICAL: The appointment time (e.g., "17:45") is in the user's local timezone
+  // To convert local time to UTC: UTC = LocalTime - Offset
+  // Example: 17:45 in UTC+5 (300 min offset) = 17:45 - 5 hours = 12:45 UTC
   const appointmentStartDateTimeUTC = new Date(Date.UTC(year, month, day, startHours, startMinutes, 0, 0));
+  // Subtract offset to convert from local time to UTC
   const appointmentStartDateTime = new Date(appointmentStartDateTimeUTC.getTime() - (tzOffsetMinutes * 60 * 1000));
   
-  console.log('🌍 [Window Check] Timezone handling:', {
+  console.log('🌍 [Window Check] Timezone conversion:', {
     timezone: appointment.timezone,
     timezoneOffset: tzOffsetMinutes,
     appointmentTime: appointment.appointmentTime,
     parsedDate: { year, month, day },
-    createdUTC: appointmentStartDateTimeUTC.toISOString(),
-    adjustedForTimezone: appointmentStartDateTime.toISOString()
+    step1_createdAsUTC: appointmentStartDateTimeUTC.toISOString(),
+    step2_subtractedOffset: `Subtracted ${tzOffsetMinutes} minutes (${Math.floor(tzOffsetMinutes / 60)} hours)`,
+    finalUTC: appointmentStartDateTime.toISOString(),
+    finalUTCHours: appointmentStartDateTime.getUTCHours(),
+    finalUTCMinutes: appointmentStartDateTime.getUTCMinutes(),
+    explanation: `Appointment ${startHours}:${startMinutes.toString().padStart(2, '0')} in UTC${tzOffsetMinutes >= 0 ? '+' : ''}${Math.floor(tzOffsetMinutes / 60)} = ${appointmentStartDateTime.toISOString()} UTC`
   });
   
   // Calculate appointment end time
