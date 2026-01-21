@@ -38,5 +38,7 @@ router.use('/announcements', require('./announcement.routes'));
 router.use('/weekly-schedule', require('./weeklySchedule.routes'));
 router.use('/balance', require('./balance.routes'));
 router.use('/orders', require('./order.routes'));
+router.use('/crm', require('./crm.routes'));
+router.use('/doctor-test', require('./doctorTest.routes')); // Test endpoint for doctor data
 
 module.exports = router;

@@ -50,6 +50,9 @@ module.exports = {
   // Stream Video SDK
   STREAM_API_KEY: process.env.STREAM_API_KEY,
   STREAM_API_SECRET: process.env.STREAM_API_SECRET,
+
+  // CRM API Key for external CRM integration
+  CRM_API_KEY: process.env.CRM_API_KEY,
 };
 
 // Warn if Stream credentials are missing (but don't fail startup)
