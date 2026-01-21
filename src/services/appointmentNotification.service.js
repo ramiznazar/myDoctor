@@ -100,6 +100,7 @@ const sendAppointmentTimeNotifications = async () => {
             }
           })
         );
+        }
       }
     } catch (error) {
       console.error('❌ [Notification] Error processing appointment for time notification:', appointment._id, error);
