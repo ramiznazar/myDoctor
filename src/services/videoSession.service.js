@@ -68,7 +68,18 @@ const startSession = async (appointmentId, userId, userName) => {
   
   if (appointment.timezoneOffset !== null && appointment.timezoneOffset !== undefined) {
     tzOffsetMinutes = appointment.timezoneOffset;
-    console.log('✅ [Video Session] Using stored timezone offset:', tzOffsetMinutes, 'minutes (UTC' + (tzOffsetMinutes >= 0 ? '+' : '') + Math.floor(tzOffsetMinutes / 60) + ')');
+    
+    // CRITICAL FIX: Detect and correct wrong timezone offsets
+    // If appointment time is in afternoon/evening (12-23) and stored offset is UTC+1 (60 minutes),
+    // it's likely wrong - should be UTC+5 (300 minutes) for Pakistan users
+    if (startHours >= 12 && startHours <= 23 && tzOffsetMinutes === 60) {
+      console.log('⚠️ [Video Session] DETECTED WRONG TIMEZONE OFFSET!');
+      console.log('⚠️ [Video Session] Stored offset:', tzOffsetMinutes, 'minutes (UTC+1)');
+      console.log('⚠️ [Video Session] Correcting to UTC+5 (300 minutes) for Pakistan timezone');
+      tzOffsetMinutes = 300; // Override with correct UTC+5 offset
+    } else {
+      console.log('✅ [Video Session] Using stored timezone offset:', tzOffsetMinutes, 'minutes (UTC' + (tzOffsetMinutes >= 0 ? '+' : '') + Math.floor(tzOffsetMinutes / 60) + ')');
+    }
   } else {
     // CRITICAL FIX: For old appointments without timezone, assume UTC+5 (Pakistan)
     // Most users are in Pakistan, so this is a reasonable default
