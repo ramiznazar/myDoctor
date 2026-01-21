@@ -29,6 +29,14 @@ const appointmentSchema = new mongoose.Schema({
     type: String,
     default: null // Calculated from appointmentTime + duration
   },
+  timezone: {
+    type: String,
+    default: null // User's timezone (e.g., "Asia/Karachi", "UTC+5", "America/New_York")
+  },
+  timezoneOffset: {
+    type: Number,
+    default: null // Timezone offset in minutes (e.g., 300 for UTC+5)
+  },
   bookingType: {
     type: String,
     enum: ["VISIT", "ONLINE"],

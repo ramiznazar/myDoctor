@@ -49,77 +49,74 @@ const startSession = async (appointmentId, userId, userName) => {
   }
 
   // Calculate appointment time window (start and end)
-  // Handle timezone correctly - use LOCAL date components
-  // CRITICAL: The appointment date was stored as local midnight, so we must use local components
-  let year, month, day;
+  // Use the same timezone logic as appointmentAccess middleware
+  const { parseAppointmentDate } = require('../middleware/appointmentAccess');
+  const dateComponents = parseAppointmentDate(appointment.appointmentDate);
   
-  if (appointment.appointmentDate instanceof Date) {
-    // Use LOCAL date components (getFullYear, getMonth, getDate)
-    // This ensures we get the date as the user intended, not as UTC interprets it
-    year = appointment.appointmentDate.getFullYear();
-    month = appointment.appointmentDate.getMonth();
-    day = appointment.appointmentDate.getDate();
-  } else {
-    // For strings, parse directly
-    const dateStr = appointment.appointmentDate.toString();
-    if (dateStr.includes('T')) {
-      const dateOnly = dateStr.split('T')[0];
-      const [y, m, d] = dateOnly.split('-').map(Number);
-      year = y;
-      month = m - 1;
-      day = d;
-    } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const [y, m, d] = dateStr.split('-').map(Number);
-      year = y;
-      month = m - 1;
-      day = d;
-    } else {
-      const dateObj = new Date(appointment.appointmentDate);
-      const isoString = dateObj.toISOString();
-      const dateOnly = isoString.split('T')[0];
-      const [y, m, d] = dateOnly.split('-').map(Number);
-      year = y;
-      month = m - 1;
-      day = d;
-    }
+  if (!dateComponents) {
+    throw new Error('Invalid appointment date');
   }
   
-  // Parse appointment time (HH:MM format) - this is in local timezone
+  const { year, month, day } = dateComponents;
+  
+  // Parse appointment time (HH:MM format)
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
   
-  // Create appointment start datetime using local timezone constructor
-  const appointmentStartDateTime = new Date(year, month, day, startHours, startMinutes, 0, 0);
+  // Get timezone offset from appointment (in minutes)
+  let tzOffsetMinutes = appointment.timezoneOffset;
+  if (tzOffsetMinutes === null || tzOffsetMinutes === undefined) {
+    const testDate = new Date();
+    tzOffsetMinutes = -testDate.getTimezoneOffset();
+    console.log('⚠️ [Video Session] No timezone stored, using server timezone offset:', tzOffsetMinutes);
+  }
+  
+  // Create appointment start datetime in UTC, then adjust for timezone
+  const appointmentStartDateTimeUTC = new Date(Date.UTC(year, month, day, startHours, startMinutes, 0, 0));
+  const appointmentStartDateTime = new Date(appointmentStartDateTimeUTC.getTime() - (tzOffsetMinutes * 60 * 1000));
   
   // Get appointment duration (default 30 minutes if not set)
   const duration = appointment.appointmentDuration || 30;
   
-  // Calculate appointment end time
+  // Calculate appointment end time - use same timezone logic
   let appointmentEndDateTime;
   if (appointment.appointmentEndTime) {
-    // Use stored end time if available
     const [endHours, endMinutes] = appointment.appointmentEndTime.split(':').map(Number);
     
-    // Handle end time that might be on the next day (e.g., 11:55 PM appointment might end at 12:25 AM next day)
     let endYear = year;
     let endMonth = month;
     let endDay = day;
     
-    // If end time is earlier than start time (e.g., 00:30 vs 23:30), it's the next day
-    if (endHours < startHours || (endHours === startHours && endMinutes < startMinutes)) {
-      // End time is on the next day
-      const nextDay = new Date(year, month, day + 1);
-      endYear = nextDay.getFullYear();
-      endMonth = nextDay.getMonth();
-      endDay = nextDay.getDate();
+    const startTimeMinutes = startHours * 60 + startMinutes;
+    const endTimeMinutes = endHours * 60 + endMinutes;
+    
+    if (endTimeMinutes < startTimeMinutes && (startTimeMinutes - endTimeMinutes) > 12 * 60) {
+      const nextDay = new Date(Date.UTC(year, month, day + 1));
+      endYear = nextDay.getUTCFullYear();
+      endMonth = nextDay.getUTCMonth();
+      endDay = nextDay.getUTCDate();
     }
     
-    appointmentEndDateTime = new Date(endYear, endMonth, endDay, endHours, endMinutes, 0, 0);
+    const appointmentEndDateTimeUTC = new Date(Date.UTC(endYear, endMonth, endDay, endHours, endMinutes, 0, 0));
+    appointmentEndDateTime = new Date(appointmentEndDateTimeUTC.getTime() - (tzOffsetMinutes * 60 * 1000));
+    
+    if (appointmentEndDateTime <= appointmentStartDateTime) {
+      const nextDay = new Date(Date.UTC(year, month, day + 1));
+      const nextDayUTC = new Date(Date.UTC(
+        nextDay.getUTCFullYear(),
+        nextDay.getUTCMonth(),
+        nextDay.getUTCDate(),
+        endHours,
+        endMinutes,
+        0,
+        0
+      ));
+      appointmentEndDateTime = new Date(nextDayUTC.getTime() - (tzOffsetMinutes * 60 * 1000));
+    }
   } else {
-    // Calculate from start time + duration
+    const duration = appointment.appointmentDuration || 30;
     appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
-    // Update appointment with calculated end time if not set
     if (!appointment.appointmentEndTime) {
-      const endTimeStr = `${appointmentEndDateTime.getHours().toString().padStart(2, '0')}:${appointmentEndDateTime.getMinutes().toString().padStart(2, '0')}`;
+      const endTimeStr = `${appointmentEndDateTime.getUTCHours().toString().padStart(2, '0')}:${appointmentEndDateTime.getUTCMinutes().toString().padStart(2, '0')}`;
       appointment.appointmentEndTime = endTimeStr;
       appointment.appointmentDuration = duration;
       await appointment.save();

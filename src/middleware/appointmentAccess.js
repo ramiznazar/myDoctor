@@ -221,19 +221,21 @@ const isWithinAppointmentWindow = (appointment) => {
     // If end time is significantly earlier than start (more than 12 hours difference),
     // it's likely on the next day
     if (endTimeMinutes < startTimeMinutes && (startTimeMinutes - endTimeMinutes) > 12 * 60) {
-      // End time is on the next day - use UTC
+      // End time is on the next day
       const nextDay = new Date(Date.UTC(year, month, day + 1));
       endYear = nextDay.getUTCFullYear();
       endMonth = nextDay.getUTCMonth();
       endDay = nextDay.getUTCDate();
     }
     
-    appointmentEndDateTime = new Date(Date.UTC(endYear, endMonth, endDay, endHours, endMinutes, 0, 0));
+    // Create end datetime in UTC, then adjust for timezone (same as start time)
+    const appointmentEndDateTimeUTC = new Date(Date.UTC(endYear, endMonth, endDay, endHours, endMinutes, 0, 0));
+    appointmentEndDateTime = new Date(appointmentEndDateTimeUTC.getTime() - (tzOffsetMinutes * 60 * 1000));
     
     // Additional validation: if calculated end time is before start time, it must be next day
     if (appointmentEndDateTime <= appointmentStartDateTime) {
       const nextDay = new Date(Date.UTC(year, month, day + 1));
-      appointmentEndDateTime = new Date(Date.UTC(
+      const nextDayUTC = new Date(Date.UTC(
         nextDay.getUTCFullYear(),
         nextDay.getUTCMonth(),
         nextDay.getUTCDate(),
@@ -242,6 +244,7 @@ const isWithinAppointmentWindow = (appointment) => {
         0,
         0
       ));
+      appointmentEndDateTime = new Date(nextDayUTC.getTime() - (tzOffsetMinutes * 60 * 1000));
       console.log('⚠️ [Window Check] End time was before start, adjusted to next day');
     }
   } else {

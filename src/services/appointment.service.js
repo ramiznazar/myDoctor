@@ -18,7 +18,9 @@ const createAppointment = async (data) => {
     bookingType,
     patientNotes,
     clinicName,
-    createdBy
+    createdBy,
+    timezone,
+    timezoneOffset
   } = data;
 
   // Verify doctor and patient exist
@@ -130,6 +132,24 @@ const createAppointment = async (data) => {
     videoCallLink = `https://videocall.mydoctor.com/${appointmentNumber}`;
   }
 
+  // Calculate timezone offset if not provided (in minutes)
+  let tzOffset = timezoneOffset;
+  if (!tzOffset && timezone) {
+    // Try to extract offset from timezone string (e.g., "UTC+5" -> 300 minutes)
+    const tzMatch = timezone.match(/UTC([+-])(\d+)/);
+    if (tzMatch) {
+      const sign = tzMatch[1] === '+' ? 1 : -1;
+      const hours = parseInt(tzMatch[2], 10);
+      tzOffset = sign * hours * 60;
+    }
+  }
+  
+  // If still no offset, try to get from current date (fallback)
+  if (!tzOffset) {
+    const testDate = new Date();
+    tzOffset = -testDate.getTimezoneOffset(); // JavaScript offset is opposite of standard
+  }
+  
   // Store the date as local midnight - this preserves the intended date regardless of timezone
   const appointment = await Appointment.create({
     doctorId,
@@ -138,6 +158,8 @@ const createAppointment = async (data) => {
     appointmentTime,
     appointmentDuration: duration,
     appointmentEndTime,
+    timezone: timezone || null,
+    timezoneOffset: tzOffset || null,
     bookingType: bookingType || 'VISIT',
     patientNotes,
     clinicName,
