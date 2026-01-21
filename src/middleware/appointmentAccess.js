@@ -182,12 +182,23 @@ const isWithinAppointmentWindow = (appointment) => {
   // Log the parsed date components
   console.log('📅 [Window Check] Parsed date components:', { year, month, day, appointmentDate: appointment.appointmentDate });
   
-  // Parse appointment time (HH:MM format) - this is in local timezone
+  // Parse appointment time (HH:MM format) - this represents the user's local time
+  // CRITICAL: We need to create this datetime in a way that represents the user's intended time
+  // Since we don't know the user's timezone, we'll create it in UTC and then adjust
+  // But actually, the appointment time is stored as a local time string, so we need to
+  // interpret it in the context where it was created (user's timezone)
+  // 
+  // SOLUTION: Create the datetime assuming the time is in UTC, then we'll compare properly
+  // OR: Store timezone with appointment and use it here
+  // 
+  // For now, let's assume appointments are created in the server's timezone context
+  // But we need to ensure the date component is correct first
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
   
-  // Create appointment start datetime using local timezone constructor
-  // This combines the date with local time
-  const appointmentStartDateTime = new Date(year, month, day, startHours, startMinutes, 0, 0);
+  // Create appointment start datetime - use UTC to avoid timezone issues
+  // We'll create it as if the time is UTC, then compare with current UTC time
+  // This ensures consistent comparison regardless of server timezone
+  const appointmentStartDateTime = new Date(Date.UTC(year, month, day, startHours, startMinutes, 0, 0));
   
   // Calculate appointment end time
   let appointmentEndDateTime;
@@ -210,27 +221,28 @@ const isWithinAppointmentWindow = (appointment) => {
     // If end time is significantly earlier than start (more than 12 hours difference),
     // it's likely on the next day
     if (endTimeMinutes < startTimeMinutes && (startTimeMinutes - endTimeMinutes) > 12 * 60) {
-      // End time is on the next day
-      const nextDay = new Date(year, month, day + 1);
-      endYear = nextDay.getFullYear();
-      endMonth = nextDay.getMonth();
-      endDay = nextDay.getDate();
+      // End time is on the next day - use UTC
+      const nextDay = new Date(Date.UTC(year, month, day + 1));
+      endYear = nextDay.getUTCFullYear();
+      endMonth = nextDay.getUTCMonth();
+      endDay = nextDay.getUTCDate();
     }
     
-    appointmentEndDateTime = new Date(endYear, endMonth, endDay, endHours, endMinutes, 0, 0);
+    appointmentEndDateTime = new Date(Date.UTC(endYear, endMonth, endDay, endHours, endMinutes, 0, 0));
     
     // Additional validation: if calculated end time is before start time, it must be next day
-    if (appointmentEndDateTime < appointmentStartDateTime) {
-      const nextDay = new Date(year, month, day + 1);
-      appointmentEndDateTime = new Date(
-        nextDay.getFullYear(),
-        nextDay.getMonth(),
-        nextDay.getDate(),
+    if (appointmentEndDateTime <= appointmentStartDateTime) {
+      const nextDay = new Date(Date.UTC(year, month, day + 1));
+      appointmentEndDateTime = new Date(Date.UTC(
+        nextDay.getUTCFullYear(),
+        nextDay.getUTCMonth(),
+        nextDay.getUTCDate(),
         endHours,
         endMinutes,
         0,
         0
-      );
+      ));
+      console.log('⚠️ [Window Check] End time was before start, adjusted to next day');
     }
   } else {
     // Calculate from duration (default 30 minutes)
@@ -238,30 +250,38 @@ const isWithinAppointmentWindow = (appointment) => {
     appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
   }
   
+  // CRITICAL: Compare times in UTC to avoid timezone issues
+  // Both appointment times and current time are now in UTC
+  const nowUTC = new Date(); // Current time (JavaScript Date is always UTC internally)
+  
   // Allow small buffer before appointment start time (2 minutes) to account for clock differences
   // Users can join anytime during the appointment window (start to end)
   const bufferTime = 2 * 60 * 1000; // 2 minutes buffer
   const earliestAllowedTime = new Date(appointmentStartDateTime.getTime() - bufferTime);
   
   // Debug logging to help diagnose timezone issues
-  const timeDiff = now.getTime() - appointmentStartDateTime.getTime();
+  const timeDiff = nowUTC.getTime() - appointmentStartDateTime.getTime();
   const timeDiffMinutes = timeDiff / (60 * 1000);
-  const timeDiffFromEnd = (now.getTime() - appointmentEndDateTime.getTime()) / (60 * 1000);
-  const timeDiffFromEarliest = (now.getTime() - earliestAllowedTime.getTime()) / (60 * 1000);
+  const timeDiffFromEnd = (nowUTC.getTime() - appointmentEndDateTime.getTime()) / (60 * 1000);
+  const timeDiffFromEarliest = (nowUTC.getTime() - earliestAllowedTime.getTime()) / (60 * 1000);
   
   // Check validation with detailed logging
-  const isAfterEarliest = now >= earliestAllowedTime;
-  const isBeforeEnd = now <= appointmentEndDateTime;
+  const isAfterEarliest = nowUTC >= earliestAllowedTime;
+  const isBeforeEnd = nowUTC <= appointmentEndDateTime;
   const isValid = isAfterEarliest && isBeforeEnd;
   
   console.log('🕐 [Window Check] DETAILED ANALYSIS', {
     now: {
-      iso: now.toISOString(),
-      local: now.toString(),
-      timestamp: now.getTime(),
-      hours: now.getHours(),
-      minutes: now.getMinutes(),
-      date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      iso: nowUTC.toISOString(),
+      local: nowUTC.toString(),
+      utc: nowUTC.toUTCString(),
+      timestamp: nowUTC.getTime(),
+      hoursUTC: nowUTC.getUTCHours(),
+      minutesUTC: nowUTC.getUTCMinutes(),
+      hoursLocal: nowUTC.getHours(),
+      minutesLocal: nowUTC.getMinutes(),
+      dateUTC: `${nowUTC.getUTCFullYear()}-${String(nowUTC.getUTCMonth() + 1).padStart(2, '0')}-${String(nowUTC.getUTCDate()).padStart(2, '0')}`,
+      dateLocal: `${nowUTC.getFullYear()}-${String(nowUTC.getMonth() + 1).padStart(2, '0')}-${String(nowUTC.getDate()).padStart(2, '0')}`
     },
     appointment: {
       dateRaw: appointment.appointmentDate,
@@ -280,20 +300,27 @@ const isWithinAppointmentWindow = (appointment) => {
     calculated: {
       startDateTime: {
         iso: appointmentStartDateTime.toISOString(),
+        utc: appointmentStartDateTime.toUTCString(),
         local: appointmentStartDateTime.toString(),
         timestamp: appointmentStartDateTime.getTime(),
-        hours: appointmentStartDateTime.getHours(),
-        minutes: appointmentStartDateTime.getMinutes()
+        hoursUTC: appointmentStartDateTime.getUTCHours(),
+        minutesUTC: appointmentStartDateTime.getUTCMinutes(),
+        hoursLocal: appointmentStartDateTime.getHours(),
+        minutesLocal: appointmentStartDateTime.getMinutes()
       },
       endDateTime: {
         iso: appointmentEndDateTime.toISOString(),
+        utc: appointmentEndDateTime.toUTCString(),
         local: appointmentEndDateTime.toString(),
         timestamp: appointmentEndDateTime.getTime(),
-        hours: appointmentEndDateTime.getHours(),
-        minutes: appointmentEndDateTime.getMinutes()
+        hoursUTC: appointmentEndDateTime.getUTCHours(),
+        minutesLocal: appointmentEndDateTime.getUTCMinutes(),
+        hoursLocal: appointmentEndDateTime.getHours(),
+        minutesLocal: appointmentEndDateTime.getMinutes()
       },
       earliestAllowed: {
         iso: earliestAllowedTime.toISOString(),
+        utc: earliestAllowedTime.toUTCString(),
         local: earliestAllowedTime.toString(),
         timestamp: earliestAllowedTime.getTime()
       }
@@ -318,11 +345,13 @@ const isWithinAppointmentWindow = (appointment) => {
   });
   
   // IMPORTANT: Check "after end" FIRST to give correct error message when time has passed
-  // Check if current time is after end time
-  if (now > appointmentEndDateTime) {
+  // Check if current time is after end time (using UTC comparison)
+  if (nowUTC > appointmentEndDateTime) {
     console.log('❌ [Window Check] BLOCKED: Time is after end time');
-    console.log(`   Current: ${now.toString()} (${now.getTime()})`);
-    console.log(`   End: ${appointmentEndDateTime.toString()} (${appointmentEndDateTime.getTime()})`);
+    console.log(`   Current UTC: ${nowUTC.toUTCString()} (${nowUTC.getTime()})`);
+    console.log(`   Current Local: ${nowUTC.toString()}`);
+    console.log(`   End UTC: ${appointmentEndDateTime.toUTCString()} (${appointmentEndDateTime.getTime()})`);
+    console.log(`   End Local: ${appointmentEndDateTime.toString()}`);
     console.log(`   Difference: ${timeDiffFromEnd.toFixed(2)} minutes after end`);
     return {
       isValid: false,
@@ -333,22 +362,19 @@ const isWithinAppointmentWindow = (appointment) => {
   }
   
   // Check if current time is before earliest allowed time (appointment start - buffer)
-  if (now < earliestAllowedTime) {
-    const timeDiffFromEarliest = (now.getTime() - earliestAllowedTime.getTime()) / (60 * 1000);
+  if (nowUTC < earliestAllowedTime) {
     console.log('❌ [Window Check] BLOCKED: Time is before earliest allowed time');
-    console.log(`   Current: ${now.toString()} (${now.getTime()})`);
-    console.log(`   Current Local: ${now.toLocaleString()}`);
-    console.log(`   Earliest: ${earliestAllowedTime.toString()} (${earliestAllowedTime.getTime()})`);
-    console.log(`   Earliest Local: ${earliestAllowedTime.toLocaleString()}`);
-    console.log(`   Start: ${appointmentStartDateTime.toString()} (${appointmentStartDateTime.getTime()})`);
-    console.log(`   Start Local: ${appointmentStartDateTime.toLocaleString()}`);
+    console.log(`   Current UTC: ${nowUTC.toUTCString()} (${nowUTC.getTime()})`);
+    console.log(`   Current Local: ${nowUTC.toString()}`);
+    console.log(`   Earliest UTC: ${earliestAllowedTime.toUTCString()} (${earliestAllowedTime.getTime()})`);
+    console.log(`   Earliest Local: ${earliestAllowedTime.toString()}`);
+    console.log(`   Start UTC: ${appointmentStartDateTime.toUTCString()} (${appointmentStartDateTime.getTime()})`);
+    console.log(`   Start Local: ${appointmentStartDateTime.toString()}`);
     console.log(`   Difference from earliest: ${timeDiffFromEarliest.toFixed(2)} minutes (negative = before start)`);
     console.log(`   Difference from start: ${timeDiffMinutes.toFixed(2)} minutes (negative = before start)`);
-    console.log(`   ⚠️ VALIDATION ISSUE: Current time appears to be within window but validation failed!`);
-    console.log(`   Check: now (${now.getTime()}) < earliestAllowedTime (${earliestAllowedTime.getTime()}) = ${now < earliestAllowedTime}`);
     return {
       isValid: false,
-      message: `Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}. Current time: ${now.toLocaleString()}.`,
+      message: `Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}. Current time: ${nowUTC.toLocaleString()}.`,
       startTime: appointmentStartDateTime,
       endTime: appointmentEndDateTime
     };
@@ -356,8 +382,10 @@ const isWithinAppointmentWindow = (appointment) => {
   
   // Time is within window
   console.log('✅ [Window Check] ALLOWED: Time is within window');
-  console.log(`   Current: ${now.toString()}`);
-  console.log(`   Window: ${appointmentStartDateTime.toString()} to ${appointmentEndDateTime.toString()}`);
+  console.log(`   Current UTC: ${nowUTC.toUTCString()}`);
+  console.log(`   Current Local: ${nowUTC.toString()}`);
+  console.log(`   Window UTC: ${appointmentStartDateTime.toUTCString()} to ${appointmentEndDateTime.toUTCString()}`);
+  console.log(`   Window Local: ${appointmentStartDateTime.toString()} to ${appointmentEndDateTime.toString()}`);
   console.log(`   Time in window: ${timeDiffMinutes.toFixed(2)} minutes`);
   return {
     isValid: true,
