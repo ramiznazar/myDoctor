@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDoctorTestData } = require('../controllers/doctorTest.controller');
-const { authGuard } = require('../middleware/authGuard');
+const authGuard = require('../middleware/authGuard');
 
 /**
  * Test API endpoint for doctors
