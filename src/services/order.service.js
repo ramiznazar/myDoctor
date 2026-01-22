@@ -92,10 +92,12 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
 
   const pharmacyData = Array.from(pharmacyMap.values())[0];
   const tax = subtotal * 0.1; // 10% tax (you can make this configurable)
-  const shipping = shippingAddress ? 10 : 0; // Fixed shipping fee (you can make this configurable)
-  const total = subtotal + tax + shipping;
+  const initialShipping = shippingAddress ? 10 : 0; // Initial shipping estimate (doctor will set final)
+  const initialTotal = subtotal + tax + initialShipping;
 
-  // Create order first (orderNumber will be auto-generated in pre-save hook)
+  // Create order with PENDING status (no payment yet)
+  // Doctor will set final shipping fee, then patient will pay
+  // IMPORTANT: Always set status and paymentStatus to PENDING, regardless of what might be passed
   const order = await Order.create({
     patientId,
     pharmacyId: pharmacyData.pharmacyId,
@@ -103,59 +105,19 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     items: orderItems,
     subtotal,
     tax,
-    shipping: shipping, // Final shipping fee
-    total: total, // Final total
+    shipping: initialShipping, // Initial shipping estimate
+    initialShipping: initialShipping, // Store initial estimate
+    total: initialTotal, // Initial total (will be updated when doctor sets shipping)
+    initialTotal: initialTotal, // Store initial total
     shippingAddress: shippingAddress || {},
-    paymentMethod: paymentMethod || 'DUMMY',
-    status: 'CONFIRMED', // Order is confirmed since payment is done
-    paymentStatus: 'PENDING' // Will be updated to PAID after transaction
+    paymentMethod: null, // Will be set when patient pays (ignore any passed value)
+    status: 'PENDING', // Order is pending until doctor sets shipping and patient pays (always PENDING)
+    paymentStatus: 'PENDING' // Payment will happen after doctor sets shipping fee (always PENDING)
   });
 
-  // Process payment immediately after order creation
-  const Transaction = require('../models/transaction.model');
-  
-  // Create transaction for payment
-  const transaction = await Transaction.create({
-    userId: patientId,
-    amount: total,
-    currency: 'USD',
-    relatedProductId: orderItems[0]?.productId || null, // For backward compatibility
-    relatedOrderId: order._id, // Link to order
-    status: 'SUCCESS',
-    provider: paymentMethod || 'DUMMY',
-    providerReference: `ORD-${order.orderNumber || order._id}`
-  });
-
-  // Link transaction to order and update payment status
-  order.transactionId = transaction._id;
-  order.paymentStatus = 'PAID';
-  await order.save();
-
-  // Update product stock (only after successful payment)
-  for (const item of items) {
-    const product = products.find(p => p._id.toString() === item.productId.toString());
-    product.stock -= item.quantity;
-    await product.save();
-  }
-
-  // Credit seller (owner) balance
-  const balanceService = require('./balance.service');
-  try {
-    const sellerAmount = subtotal; // Credit only the product subtotal, not shipping
-    await balanceService.creditBalance(
-      pharmacyData.ownerId.toString(),
-      sellerAmount,
-      'ORDER',
-      {
-        orderId: order._id.toString(),
-        orderNumber: order.orderNumber,
-        transactionId: transaction._id.toString()
-      }
-    );
-  } catch (error) {
-    // Log error but don't fail the order creation
-    console.error('Error crediting seller balance for order:', error);
-  }
+  // DO NOT process payment here - patient will pay after doctor sets shipping fee
+  // DO NOT reduce stock here - stock will be reduced after payment
+  // DO NOT credit balance here - balance will be credited after payment
 
   return order;
 };
@@ -357,8 +319,8 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
     throw new Error('Unauthorized: Only pharmacy owners and admins can update order status');
   }
 
-  // Can only update status if order is paid
-  if (order.paymentStatus !== 'PAID') {
+  // Can only update status if order is paid (except for CANCELLED)
+  if (order.paymentStatus !== 'PAID' && status.toUpperCase() !== 'CANCELLED') {
     throw new Error('Cannot update order status until the order has been paid');
   }
 
@@ -382,29 +344,134 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
 
 /**
  * Update shipping fee for order
- * @deprecated Shipping fee is now set during checkout. This function is kept for backward compatibility but throws an error.
+ * Only pharmacy owner (doctor) can update shipping fee
+ * This must be done before patient pays
+ * @param {string} orderId - Order ID
+ * @param {number} shippingFee - Final shipping fee
+ * @param {string} userId - User ID (for authorization)
+ * @param {string} userRole - User role
+ * @returns {Promise<Object>} Updated order
  */
 const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
-  throw new Error('Shipping fee cannot be updated. Payment is processed during checkout with the final shipping fee.');
-};
-
-/**
- * Pay for order
- * @deprecated Payment is now processed during checkout. This function is kept for backward compatibility but throws an error.
- */
-const payForOrder = async (orderId, paymentMethod = 'DUMMY') => {
-  const Order = require('../models/order.model');
   const order = await Order.findById(orderId);
-  
+
   if (!order) {
     throw new Error('Order not found');
   }
 
-  if (order.paymentStatus === 'PAID') {
-    throw new Error('Order is already paid. Payment is processed during checkout.');
+  // Authorization check - only pharmacy owner can update shipping
+  if (userRole !== 'DOCTOR' || order.ownerId.toString() !== userId.toString()) {
+    throw new Error('Unauthorized: Only the pharmacy owner can update shipping fee');
   }
 
-  throw new Error('Payment must be processed during checkout. This endpoint is no longer used.');
+  // Cannot update shipping if order is already paid
+  if (order.paymentStatus === 'PAID') {
+    throw new Error('Cannot update shipping fee for an order that has already been paid');
+  }
+
+  // Validate shipping fee
+  if (typeof shippingFee !== 'number' || shippingFee < 0) {
+    throw new Error('Shipping fee must be a non-negative number');
+  }
+
+  // Calculate new total
+  const finalShipping = shippingFee;
+  const finalTotal = order.subtotal + order.tax + finalShipping;
+
+  // Update order with final shipping fee
+  order.shipping = finalShipping;
+  order.finalShipping = finalShipping;
+  order.total = finalTotal;
+  order.shippingUpdatedAt = new Date();
+  order.requiresPaymentUpdate = false; // Patient needs to pay the updated amount
+
+  await order.save();
+
+  return order;
+};
+
+/**
+ * Pay for order
+ * Patient pays for order after doctor has set the shipping fee
+ * @param {string} orderId - Order ID
+ * @param {string} userId - User ID (for authorization)
+ * @param {string} userRole - User role
+ * @param {string} paymentMethod - Payment method
+ * @returns {Promise<Object>} Updated order
+ */
+const payForOrder = async (orderId, userId, userRole, paymentMethod = 'DUMMY') => {
+  const balanceService = require('./balance.service');
+  
+  const order = await Order.findById(orderId)
+    .populate('items.productId')
+    .populate('ownerId');
+
+  if (!order) {
+    throw new Error('Order not found');
+  }
+
+  // Authorization check - only patient who owns the order can pay
+  if (userRole === 'PATIENT' && order.patientId.toString() !== userId.toString()) {
+    throw new Error('Unauthorized: You can only pay for your own orders');
+  }
+
+  if (order.paymentStatus === 'PAID') {
+    throw new Error('Order is already paid');
+  }
+
+  // Validate that shipping fee has been set by doctor
+  if (order.finalShipping === null || order.finalShipping === undefined) {
+    throw new Error('Shipping fee must be set by the pharmacy owner before payment');
+  }
+
+  // Create transaction
+  const transaction = await Transaction.create({
+    userId: order.patientId,
+    amount: order.total,
+    currency: 'USD',
+    relatedOrderId: orderId,
+    status: 'SUCCESS',
+    provider: paymentMethod,
+    providerReference: `ORD-${Date.now()}-${orderId}`
+  });
+
+  // Update order
+  order.paymentStatus = 'PAID';
+  order.status = 'CONFIRMED';
+  order.paymentMethod = paymentMethod;
+  order.transactionId = transaction._id;
+  await order.save();
+
+  // Reduce product stock
+  for (const item of order.items) {
+    const product = item.productId;
+    if (product) {
+      if (product.stock < item.quantity) {
+        throw new Error(`Insufficient stock for product ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`);
+      }
+      product.stock -= item.quantity;
+      await product.save();
+    }
+  }
+
+  // Credit seller balance (pharmacy owner/doctor)
+  try {
+    await balanceService.creditBalance(
+      order.ownerId._id.toString(),
+      order.total,
+      'PRODUCT',
+      {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        transactionId: transaction._id.toString()
+      }
+    );
+  } catch (error) {
+    console.error('Error crediting seller balance:', error);
+    // Log error but don't fail the payment - balance can be credited later
+  }
+
+  return order;
 };
 
 /**
@@ -441,12 +508,14 @@ const cancelOrder = async (orderId, userId, userRole) => {
     throw new Error('Cannot cancel an order that has already been paid');
   }
 
-  // Restore product stock
-  for (const item of order.items) {
-    const product = item.productId;
-    if (product) {
-      product.stock += item.quantity;
-      await product.save();
+  // Restore product stock (only if order wasn't paid, or if paid but not shipped)
+  if (order.paymentStatus !== 'PAID' || order.status !== 'SHIPPED') {
+    for (const item of order.items) {
+      const product = item.productId;
+      if (product) {
+        product.stock += item.quantity;
+        await product.save();
+      }
     }
   }
 

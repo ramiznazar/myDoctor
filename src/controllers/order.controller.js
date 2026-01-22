@@ -67,25 +67,40 @@ exports.updateStatus = asyncHandler(async (req, res) => {
 
 /**
  * Update shipping fee
- * @deprecated Shipping fee is now set during checkout
+ * Only pharmacy owner (doctor) can update shipping fee
  */
 exports.updateShippingFee = asyncHandler(async (req, res) => {
-  res.status(400).json({ 
-    success: false, 
-    message: 'Shipping fee cannot be updated. Payment is processed during checkout with the final shipping fee.' 
+  const { shippingFee } = req.body;
+  const result = await orderService.updateShippingFee(
+    req.params.id,
+    shippingFee,
+    req.userId,
+    req.userRole
+  );
+  res.json({ 
+    success: true, 
+    message: 'Shipping fee updated successfully. Patient can now pay for the order.', 
+    data: result 
   });
 });
 
 /**
  * Pay for order
+ * Patient pays for order after doctor has set the shipping fee
  */
 exports.payForOrder = asyncHandler(async (req, res) => {
   const { paymentMethod } = req.body;
   const result = await orderService.payForOrder(
     req.params.id,
+    req.userId,
+    req.userRole,
     paymentMethod || 'DUMMY'
   );
-  res.json({ success: true, message: 'Payment processed successfully', data: result });
+  res.json({ 
+    success: true, 
+    message: 'Payment processed successfully', 
+    data: result 
+  });
 });
 
 /**
