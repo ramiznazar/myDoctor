@@ -11,7 +11,7 @@ const sendMessageValidator = z.object({
     patientId: z.string().min(1).optional(), // Required for doctor-patient chat
     adminId: z.string().min(1).optional(), // Required for admin-doctor chat
     appointmentId: z.string().min(1).optional(), // Required for doctor-patient chat
-    message: z.string().min(1).optional(),
+    message: z.string().optional().or(z.literal('')), // Allow empty string or undefined
     attachments: z.array(
       z.object({
         type: z.string().optional(), // 'image' or 'file'
@@ -21,7 +21,12 @@ const sendMessageValidator = z.object({
       })
     ).optional()
   }).refine(
-    (data) => data.message || (data.attachments && data.attachments.length > 0),
+    (data) => {
+      // Either message (non-empty) or attachments must be provided
+      const hasMessage = data.message && typeof data.message === 'string' && data.message.trim().length > 0;
+      const hasAttachments = data.attachments && Array.isArray(data.attachments) && data.attachments.length > 0;
+      return hasMessage || hasAttachments;
+    },
     {
       message: "Either message or attachments must be provided"
     }

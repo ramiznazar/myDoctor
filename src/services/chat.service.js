@@ -3,7 +3,7 @@ const Conversation = require('../models/conversation.model');
 const User = require('../models/user.model');
 const Appointment = require('../models/appointment.model');
 const Notification = require('../models/notification.model');
-const { isAppointmentTimeStarted } = require('../middleware/appointmentAccess');
+const { isWithinAppointmentWindow } = require('../middleware/appointmentAccess');
 
 /**
  * Send message
@@ -153,12 +153,10 @@ const sendMessage = async (data) => {
       throw new Error(statusMessages[appointment.status] || 'Communication is not available for this appointment status.');
     }
 
-    // Check if appointment time has started
-    if (!isAppointmentTimeStarted(appointment.appointmentDate, appointment.appointmentTime)) {
-      const appointmentDateTime = new Date(appointment.appointmentDate);
-      const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
-      appointmentDateTime.setHours(hours, minutes, 0, 0);
-      throw new Error(`Communication is only available at the scheduled appointment time. Your appointment is scheduled for ${appointmentDateTime.toLocaleString()}.`);
+    // Check if current time is within the appointment window (timezone-aware)
+    const timeWindowCheck = isWithinAppointmentWindow(appointment);
+    if (!timeWindowCheck.isValid) {
+      throw new Error(timeWindowCheck.message || 'Communication is only available during the scheduled appointment time window.');
     }
 
     // Get or create conversation (link to appointment)
@@ -312,12 +310,10 @@ const getOrCreateConversation = async (doctorId, patientId, adminId, appointment
       throw new Error('Appointment must be confirmed before communication can begin');
     }
 
-    // Check if appointment time has started
-    if (!isAppointmentTimeStarted(appointment.appointmentDate, appointment.appointmentTime)) {
-      const appointmentDateTime = new Date(appointment.appointmentDate);
-      const [hours, minutes] = appointment.appointmentTime.split(':').map(Number);
-      appointmentDateTime.setHours(hours, minutes, 0, 0);
-      throw new Error(`Communication is only available at the scheduled appointment time. Your appointment is scheduled for ${appointmentDateTime.toLocaleString()}.`);
+    // Check if current time is within the appointment window (timezone-aware)
+    const timeWindowCheck = isWithinAppointmentWindow(appointment);
+    if (!timeWindowCheck.isValid) {
+      throw new Error(timeWindowCheck.message || 'Communication is only available during the scheduled appointment time window.');
     }
 
     let conversation = await Conversation.findOne({
