@@ -202,13 +202,15 @@ const isWithinAppointmentWindow = (appointment) => {
     tzOffsetMinutes = appointment.timezoneOffset;
     
     // CRITICAL FIX: Detect and correct wrong timezone offsets
-    // If appointment time is in afternoon/evening (12-23) and stored offset is UTC+1 (60 minutes),
-    // it's likely wrong - should be UTC+5 (300 minutes) for Pakistan users
+    // If stored offset is UTC+1 (60 minutes), it's likely wrong for Pakistan users (should be UTC+5 = 300 minutes)
     // This happens when appointments were created before timezone support or with incorrect fallback
-    if (startHours >= 12 && startHours <= 23 && tzOffsetMinutes === 60) {
+    // Check for both morning and afternoon/evening appointments
+    if (tzOffsetMinutes === 60) {
+      // UTC+1 is likely wrong - most users are in Pakistan (UTC+5)
+      // Correct to UTC+5 (300 minutes) for all appointment times
       console.log('⚠️ [Window Check] DETECTED WRONG TIMEZONE OFFSET!');
       console.log('⚠️ [Window Check] Stored offset:', tzOffsetMinutes, 'minutes (UTC+1)');
-      console.log('⚠️ [Window Check] Appointment time:', startHours + ':' + startMinutes.toString().padStart(2, '0'), '(afternoon/evening)');
+      console.log('⚠️ [Window Check] Appointment time:', startHours + ':' + startMinutes.toString().padStart(2, '0'));
       console.log('⚠️ [Window Check] Correcting to UTC+5 (300 minutes) for Pakistan timezone');
       tzOffsetMinutes = 300; // Override with correct UTC+5 offset
     } else {
@@ -425,7 +427,7 @@ const isWithinAppointmentWindow = (appointment) => {
     console.log(`   Difference: ${timeDiffFromEnd.toFixed(2)} minutes after end`);
     return {
       isValid: false,
-      message: `The appointment time has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`,
+      message: `The appointment time has passed. The appointment window was from ${appointmentStartDateTime.toUTCString()} to ${appointmentEndDateTime.toUTCString()}. Chat is no longer available.`,
       startTime: appointmentStartDateTime,
       endTime: appointmentEndDateTime
     };
@@ -442,9 +444,10 @@ const isWithinAppointmentWindow = (appointment) => {
     console.log(`   Start Local: ${appointmentStartDateTime.toString()}`);
     console.log(`   Difference from earliest: ${timeDiffFromEarliest.toFixed(2)} minutes (negative = before start)`);
     console.log(`   Difference from start: ${timeDiffMinutes.toFixed(2)} minutes (negative = before start)`);
+    
     return {
       isValid: false,
-      message: `Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}. Current time: ${nowUTC.toLocaleString()}.`,
+      message: `Chat is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toUTCString()} and ends at ${appointmentEndDateTime.toUTCString()}. Current time: ${nowUTC.toUTCString()}.`,
       startTime: appointmentStartDateTime,
       endTime: appointmentEndDateTime
     };
