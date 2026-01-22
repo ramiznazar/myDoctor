@@ -14,8 +14,10 @@ const sendMessageValidator = z.object({
     message: z.string().min(1).optional(),
     attachments: z.array(
       z.object({
-        type: z.string(),
-        url: z.string().url("Invalid attachment URL")
+        type: z.string().optional(), // 'image' or 'file'
+        url: z.string().min(1, "Attachment URL is required"), // Can be relative or absolute URL
+        name: z.string().optional(), // File name
+        size: z.number().optional() // File size in bytes
       })
     ).optional()
   }).refine(

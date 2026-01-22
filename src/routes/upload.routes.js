@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { uploadSingleImage, uploadMultipleImages } = require('../middleware/upload.middleware');
+const { uploadSingleImage, uploadMultipleImages, uploadSingleChatFile, uploadMultipleChatFiles } = require('../middleware/upload.middleware');
 const uploadController = require('../controllers/upload.controller');
 const authGuard = require('../middleware/authGuard');
 const asyncHandler = require('../middleware/asyncHandler');
@@ -87,6 +87,30 @@ router.post(
   authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
   uploadSingleImage('general'),
   asyncHandler(uploadController.uploadSingleFile)
+);
+
+/**
+ * @route   POST /api/upload/chat
+ * @desc    Upload file for chat (supports all file types - images, PDFs, documents, etc.)
+ * @access  Private (Admin, Doctor, Patient)
+ */
+router.post(
+  '/chat',
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
+  uploadSingleChatFile('chat'),
+  asyncHandler(uploadController.uploadSingleFile)
+);
+
+/**
+ * @route   POST /api/upload/chat/multiple
+ * @desc    Upload multiple files for chat (supports all file types)
+ * @access  Private (Admin, Doctor, Patient)
+ */
+router.post(
+  '/chat/multiple',
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
+  uploadMultipleChatFiles('chat', 10),
+  asyncHandler(uploadController.uploadMultipleFiles)
 );
 
 module.exports = router;

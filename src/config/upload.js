@@ -16,7 +16,8 @@ const getMulterStorage = (folderName) => {
     product: 'product',
     blog: 'blog',
     pharmacy: 'pharmacy',
-    general: 'general'
+    general: 'general',
+    chat: 'chat'
   };
 
   const uploadFolder = folderMap[folderName] || 'general';
