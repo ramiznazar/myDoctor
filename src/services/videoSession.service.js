@@ -70,11 +70,15 @@ const startSession = async (appointmentId, userId, userName) => {
     tzOffsetMinutes = appointment.timezoneOffset;
     
     // CRITICAL FIX: Detect and correct wrong timezone offsets
-    // If appointment time is in afternoon/evening (12-23) and stored offset is UTC+1 (60 minutes),
-    // it's likely wrong - should be UTC+5 (300 minutes) for Pakistan users
-    if (startHours >= 12 && startHours <= 23 && tzOffsetMinutes === 60) {
+    // If stored offset is UTC+1 (60 minutes), it's likely wrong for Pakistan users (should be UTC+5 = 300 minutes)
+    // This happens when appointments were created before timezone support or with incorrect fallback
+    // Check for ALL appointment times, not just afternoon/evening
+    if (tzOffsetMinutes === 60) {
+      // UTC+1 is likely wrong - most users are in Pakistan (UTC+5)
+      // Correct to UTC+5 (300 minutes) for all appointment times
       console.log('⚠️ [Video Session] DETECTED WRONG TIMEZONE OFFSET!');
       console.log('⚠️ [Video Session] Stored offset:', tzOffsetMinutes, 'minutes (UTC+1)');
+      console.log('⚠️ [Video Session] Appointment time:', startHours + ':' + startMinutes.toString().padStart(2, '0'));
       console.log('⚠️ [Video Session] Correcting to UTC+5 (300 minutes) for Pakistan timezone');
       tzOffsetMinutes = 300; // Override with correct UTC+5 offset
     } else {
@@ -83,15 +87,8 @@ const startSession = async (appointmentId, userId, userName) => {
   } else {
     // CRITICAL FIX: For old appointments without timezone, assume UTC+5 (Pakistan)
     // Most users are in Pakistan, so this is a reasonable default
-    if (startHours >= 12 && startHours <= 23) {
-      // Afternoon/evening appointment - likely local time (Pakistan)
-      tzOffsetMinutes = 300; // UTC+5
-      console.log('⚠️ [Video Session] No timezone stored, assuming UTC+5 (Pakistan) for afternoon/evening appointment');
-    } else {
-      // Morning appointment - still assume UTC+5 as default
-      tzOffsetMinutes = 300; // UTC+5
-      console.log('⚠️ [Video Session] No timezone stored, defaulting to UTC+5 (Pakistan)');
-    }
+    tzOffsetMinutes = 300; // UTC+5 (Pakistan)
+    console.log('⚠️ [Video Session] No timezone stored, defaulting to UTC+5 (Pakistan)');
   }
   
   // Ensure tzOffsetMinutes is a valid number
@@ -168,7 +165,7 @@ const startSession = async (appointmentId, userId, userName) => {
     console.log(`   Current: ${now.toString()} (${now.getTime()})`);
     console.log(`   End: ${appointmentEndDateTime.toString()} (${appointmentEndDateTime.getTime()})`);
     console.log(`   Difference: ${timeDiffFromEnd.toFixed(2)} minutes after end`);
-    throw new Error(`The appointment time window has passed. The appointment window was from ${appointmentStartDateTime.toLocaleString()} to ${appointmentEndDateTime.toLocaleString()}. Video call is no longer available.`);
+    throw new Error(`The appointment time window has passed. The appointment window was from ${appointmentStartDateTime.toUTCString()} to ${appointmentEndDateTime.toUTCString()}. Video call is no longer available.`);
   }
   
   // Check if current time is before earliest allowed time (appointment start - buffer)
@@ -179,7 +176,7 @@ const startSession = async (appointmentId, userId, userName) => {
     console.log(`   Earliest: ${earliestAllowedTime.toString()} (${earliestAllowedTime.getTime()})`);
     console.log(`   Start: ${appointmentStartDateTime.toString()} (${appointmentStartDateTime.getTime()})`);
     console.log(`   Difference: ${timeDiffFromStart.toFixed(2)} minutes (negative = before start)`);
-    throw new Error(`Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toLocaleString()} and ends at ${appointmentEndDateTime.toLocaleString()}.`);
+    throw new Error(`Video call is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toUTCString()} and ends at ${appointmentEndDateTime.toUTCString()}. Current time: ${now.toUTCString()}.`);
   }
   
   // If we reach here, the user is within the appointment window
