@@ -9,8 +9,17 @@ const createRescheduleRequestValidator = z.object({
     reason: z.string()
       .min(10, "Reason must be at least 10 characters")
       .max(500, "Reason must not exceed 500 characters"),
-    preferredDate: z.string().optional(), // ISO date string
-    preferredTime: z.string().optional() // "HH:MM" format
+    preferredDate: z.string()
+      .min(1, "Preferred date must not be empty if provided")
+      .nullish()
+      .refine((val) => !val || val.trim().length > 0, {
+        message: "Preferred date must not be empty if provided"
+      }), // ISO date string (YYYY-MM-DD) or null/undefined
+    preferredTime: z.string()
+      .nullish()
+      .refine((val) => !val || /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(val.trim()), {
+        message: "Preferred time must be in HH:MM format (e.g., 14:30) if provided"
+      }) // "HH:MM" format or null/undefined
   })
 });
 
