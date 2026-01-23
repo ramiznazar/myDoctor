@@ -239,9 +239,10 @@ const requestWithdrawal = async (userId, amount, paymentDetails = {}) => {
  * Approve withdrawal request (Admin only)
  * @param {string} requestId - Withdrawal request ID
  * @param {string} adminId - Admin ID
+ * @param {number} withdrawalFeePercent - Withdrawal fee percentage (0-100)
  * @returns {Promise<Object>} Approved request
  */
-const approveWithdrawal = async (requestId, adminId) => {
+const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null) => {
   const request = await WithdrawalRequest.findById(requestId)
     .populate('userId', 'balance fullName email');
   
@@ -254,29 +255,47 @@ const approveWithdrawal = async (requestId, adminId) => {
   }
 
   const user = request.userId;
+  const withdrawalAmount = request.amount;
 
-  // Check if user still has sufficient balance
-  if ((user.balance || 0) < request.amount) {
-    request.status = 'REJECTED';
-    request.rejectionReason = 'Insufficient balance at approval time';
-    await request.save();
-    throw new Error('User no longer has sufficient balance');
+  // Validate fee percentage if provided
+  if (withdrawalFeePercent !== null) {
+    if (withdrawalFeePercent < 0 || withdrawalFeePercent > 100) {
+      throw new Error('Withdrawal fee percentage must be between 0 and 100');
+    }
   }
 
-  // Deduct balance
-  user.balance = (user.balance || 0) - request.amount;
+  // Calculate fee and totals
+  const feePercent = withdrawalFeePercent !== null ? withdrawalFeePercent : 0;
+  const withdrawalFeeAmount = (withdrawalAmount * feePercent) / 100;
+  const totalDeducted = withdrawalAmount + withdrawalFeeAmount;
+  const netAmount = withdrawalAmount; // Doctor receives the original amount
+
+  // Check if user has sufficient balance (must cover amount + fee)
+  if ((user.balance || 0) < totalDeducted) {
+    request.status = 'REJECTED';
+    request.rejectionReason = `Insufficient balance. Required: ${totalDeducted.toFixed(2)}, Available: ${(user.balance || 0).toFixed(2)}`;
+    await request.save();
+    throw new Error(`Insufficient balance. Required: $${totalDeducted.toFixed(2)}, Available: $${(user.balance || 0).toFixed(2)}`);
+  }
+
+  // Deduct total amount (withdrawal + fee) from balance
+  user.balance = (user.balance || 0) - totalDeducted;
   await user.save();
 
-  // Update request
+  // Update request with fee information
   request.status = 'APPROVED';
   request.approvedAt = new Date();
   request.approvedBy = adminId;
+  request.withdrawalFeePercent = feePercent;
+  request.withdrawalFeeAmount = withdrawalFeeAmount;
+  request.totalDeducted = totalDeducted;
+  request.netAmount = netAmount;
   await request.save();
 
-  // Create transaction record
+  // Create transaction record for the withdrawal
   await Transaction.create({
     userId: user._id,
-    amount: -request.amount, // Negative for withdrawal
+    amount: -totalDeducted, // Negative for withdrawal (includes fee)
     currency: 'USD',
     status: 'SUCCESS',
     provider: 'WITHDRAWAL',
@@ -285,9 +304,35 @@ const approveWithdrawal = async (requestId, adminId) => {
       type: 'WITHDRAWAL',
       requestId: request._id,
       adminId,
+      withdrawalAmount: withdrawalAmount,
+      withdrawalFeePercent: feePercent,
+      withdrawalFeeAmount: withdrawalFeeAmount,
+      totalDeducted: totalDeducted,
+      netAmount: netAmount,
       timestamp: new Date()
     }
   });
+
+  // Create separate transaction record for the fee (optional, for tracking)
+  if (withdrawalFeeAmount > 0) {
+    await Transaction.create({
+      userId: user._id,
+      amount: -withdrawalFeeAmount, // Negative for fee deduction
+      currency: 'USD',
+      status: 'SUCCESS',
+      provider: 'WITHDRAWAL_FEE',
+      providerReference: `WITHDRAW-FEE-${Date.now()}-${user._id}`,
+      metadata: {
+        type: 'WITHDRAWAL_FEE',
+        requestId: request._id,
+        adminId,
+        withdrawalAmount: withdrawalAmount,
+        withdrawalFeePercent: feePercent,
+        withdrawalFeeAmount: withdrawalFeeAmount,
+        timestamp: new Date()
+      }
+    });
+  }
 
   return request;
 };

@@ -38,9 +38,31 @@ exports.requestWithdrawal = asyncHandler(async (req, res) => {
  */
 exports.approveWithdrawal = asyncHandler(async (req, res) => {
   const { requestId } = req.params;
+  const { withdrawalFeePercent } = req.body; // Get fee percentage from request body
   const adminId = req.userId;
-  const result = await balanceService.approveWithdrawal(requestId, adminId);
-  res.json({ success: true, message: 'Withdrawal request approved', data: result });
+  
+  // Validate fee percentage if provided
+  if (withdrawalFeePercent !== undefined && withdrawalFeePercent !== null) {
+    if (typeof withdrawalFeePercent !== 'number' || withdrawalFeePercent < 0 || withdrawalFeePercent > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Withdrawal fee percentage must be a number between 0 and 100',
+        errors: [{ message: 'Invalid withdrawal fee percentage' }]
+      });
+    }
+  }
+  
+  const result = await balanceService.approveWithdrawal(
+    requestId, 
+    adminId, 
+    withdrawalFeePercent !== undefined ? withdrawalFeePercent : null
+  );
+  
+  res.json({ 
+    success: true, 
+    message: 'Withdrawal request approved successfully', 
+    data: result 
+  });
 });
 
 /**
