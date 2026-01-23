@@ -25,7 +25,7 @@ const processAppointmentPayment = async (userId, appointmentId, amount, paymentM
   const transaction = await Transaction.create({
     userId,
     amount,
-    currency: 'USD',
+    currency: 'EUR',
     relatedAppointmentId: appointmentId,
     status: 'SUCCESS',
     provider: paymentMethod,
@@ -64,7 +64,7 @@ const processSubscriptionPayment = async (doctorId, planId, amount, paymentMetho
   const transaction = await Transaction.create({
     userId: doctorId,
     amount,
-    currency: 'USD',
+    currency: 'EUR',
     relatedSubscriptionId: planId,
     status: 'SUCCESS',
     provider: paymentMethod,
@@ -117,7 +117,7 @@ const processProductPayment = async (userId, productId, amount, paymentMethod = 
   const transaction = await Transaction.create({
     userId,
     amount,
-    currency: 'USD',
+    currency: 'EUR',
     relatedProductId: productId,
     status: 'SUCCESS',
     provider: paymentMethod,
@@ -175,7 +175,7 @@ const processOrderPayment = async (orderId, paymentMethod = 'DUMMY', amount = nu
   const transaction = await Transaction.create({
     userId: order.patientId,
     amount: amountToPay,
-    currency: 'USD',
+    currency: 'EUR',
     relatedProductId: order.items[0]?.productId?._id || null, // For backward compatibility
     relatedOrderId: order._id, // Link to order
     status: 'SUCCESS',

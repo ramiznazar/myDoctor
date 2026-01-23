@@ -45,7 +45,7 @@ const creditBalance = async (userId, amount, transactionType, metadata = {}) => 
   await Transaction.create({
     userId,
     amount: netAmount,
-    currency: 'USD',
+    currency: 'EUR',
     status: 'SUCCESS',
     provider: 'BALANCE_CREDIT',
     providerReference: `${transactionType}-${Date.now()}-${userId}`,
@@ -104,7 +104,7 @@ const debitBalance = async (userId, amount, transactionType, metadata = {}) => {
   await Transaction.create({
     userId,
     amount: -amount, // Negative for debit
-    currency: 'USD',
+    currency: 'EUR',
     status: 'SUCCESS',
     provider: 'BALANCE_DEBIT',
     providerReference: `${transactionType}-${Date.now()}-${userId}`,
@@ -171,7 +171,7 @@ const topUpBalance = async (userId, amount, adminId) => {
   await Transaction.create({
     userId,
     amount,
-    currency: 'USD',
+    currency: 'EUR',
     status: 'SUCCESS',
     provider: 'ADMIN_TOPUP',
     providerReference: `TOPUP-${Date.now()}-${userId}`,
@@ -296,7 +296,7 @@ const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null
   await Transaction.create({
     userId: user._id,
     amount: -totalDeducted, // Negative for withdrawal (includes fee)
-    currency: 'USD',
+    currency: 'EUR',
     status: 'SUCCESS',
     provider: 'WITHDRAWAL',
     providerReference: `WITHDRAW-${Date.now()}-${user._id}`,
@@ -318,7 +318,7 @@ const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null
     await Transaction.create({
       userId: user._id,
       amount: -withdrawalFeeAmount, // Negative for fee deduction
-      currency: 'USD',
+      currency: 'EUR',
       status: 'SUCCESS',
       provider: 'WITHDRAWAL_FEE',
       providerReference: `WITHDRAW-FEE-${Date.now()}-${user._id}`,

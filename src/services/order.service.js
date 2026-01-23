@@ -428,7 +428,7 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'DUMMY') =
   const transaction = await Transaction.create({
     userId: order.patientId,
     amount: order.total,
-    currency: 'USD',
+    currency: 'EUR',
     relatedOrderId: orderId,
     status: 'SUCCESS',
     provider: paymentMethod,

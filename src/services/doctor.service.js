@@ -409,7 +409,7 @@ const buySubscriptionPlan = async (doctorId, planId) => {
       userId: doctorId,
       relatedSubscriptionId: planId,
       amount: plan.price,
-      currency: 'USD',
+      currency: 'EUR',
       status: 'SUCCESS',
       provider: 'DUMMY',
       providerReference: `SUB-${Date.now()}-${doctorId}`

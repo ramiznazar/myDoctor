@@ -28,7 +28,7 @@ const createTransaction = async (data) => {
   const transaction = await Transaction.create({
     userId,
     amount,
-    currency: currency || 'USD',
+    currency: currency || 'EUR',
     relatedAppointmentId: relatedAppointmentId || null,
     relatedSubscriptionId: relatedSubscriptionId || null,
     relatedProductId: relatedProductId || null,
