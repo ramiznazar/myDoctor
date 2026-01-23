@@ -53,6 +53,13 @@ module.exports = {
 
   // CRM API Key for external CRM integration
   CRM_API_KEY: process.env.CRM_API_KEY,
+
+  // Reschedule Request Configuration
+  RESCHEDULE_REQUEST_DEADLINE_DAYS: process.env.RESCHEDULE_REQUEST_DEADLINE_DAYS || 7,
+  RESCHEDULE_DEFAULT_FEE_PERCENTAGE: process.env.RESCHEDULE_DEFAULT_FEE_PERCENTAGE || 50,
+  RESCHEDULE_MIN_FEE: process.env.RESCHEDULE_MIN_FEE || 5,
+  RESCHEDULE_DOCTOR_RESPONSE_DEADLINE_HOURS: process.env.RESCHEDULE_DOCTOR_RESPONSE_DEADLINE_HOURS || 48,
+  RESCHEDULE_PAYMENT_DEADLINE_HOURS: process.env.RESCHEDULE_PAYMENT_DEADLINE_HOURS || 24,
 };
 
 // Warn if Stream credentials are missing (but don't fail startup)

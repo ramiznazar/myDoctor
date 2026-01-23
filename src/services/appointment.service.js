@@ -20,7 +20,12 @@ const createAppointment = async (data) => {
     clinicName,
     createdBy,
     timezone,
-    timezoneOffset
+    timezoneOffset,
+    status, // Optional: for rescheduled appointments
+    isRescheduled, // Optional: for rescheduled appointments
+    originalAppointmentId, // Optional: for rescheduled appointments
+    rescheduleFee, // Optional: for rescheduled appointments
+    rescheduleRequestId // Optional: for rescheduled appointments
   } = data;
 
   // Verify doctor and patient exist
@@ -166,8 +171,12 @@ const createAppointment = async (data) => {
     videoCallLink,
     appointmentNumber,
     createdBy: createdBy || patientId,
-    status: 'PENDING',
-    paymentStatus: 'UNPAID'
+    status: status || 'PENDING', // Use provided status or default to PENDING
+    paymentStatus: status === 'PENDING_PAYMENT' ? 'UNPAID' : 'UNPAID', // For rescheduled appointments
+    isRescheduled: isRescheduled || false,
+    originalAppointmentId: originalAppointmentId || null,
+    rescheduleFee: rescheduleFee || null,
+    rescheduleRequestId: rescheduleRequestId || null
   });
 
   // Create notifications for doctor and patient

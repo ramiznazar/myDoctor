@@ -20,6 +20,7 @@ router.use('/specialization', require('./specialization.routes'));
 router.use('/insurance', require('./insurance.routes'));
 router.use('/subscription', require('./subscription.routes'));
 router.use('/appointment', require('./appointment.routes'));
+router.use('/reschedule-request', require('./rescheduleRequest.routes'));
 router.use('/video', require('./videoSession.routes'));
 router.use('/chat', require('./chat.routes'));
 router.use('/products', require('./product.routes'));

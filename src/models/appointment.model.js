@@ -44,7 +44,7 @@ const appointmentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW", "REJECTED"],
+    enum: ["PENDING", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW", "REJECTED", "RESCHEDULED", "PENDING_PAYMENT"],
     default: null
   },
   paymentStatus: {
@@ -84,6 +84,24 @@ const appointmentSchema = new mongoose.Schema({
   },
   notes: {
     type: String,
+    default: null
+  },
+  rescheduleRequestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "RescheduleRequest",
+    default: null
+  },
+  isRescheduled: {
+    type: Boolean,
+    default: false
+  },
+  originalAppointmentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Appointment",
+    default: null
+  },
+  rescheduleFee: {
+    type: Number,
     default: null
   }
 }, {
