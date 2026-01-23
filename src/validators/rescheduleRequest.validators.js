@@ -28,11 +28,23 @@ const createRescheduleRequestValidator = z.object({
  */
 const approveRescheduleRequestValidator = z.object({
   body: z.object({
-    newAppointmentDate: z.string().min(1, "New appointment date is required"), // ISO date string
-    newAppointmentTime: z.string().min(1, "New appointment time is required"), // "HH:MM" format
-    rescheduleFee: z.number().min(0).optional(), // If not provided, uses default percentage
-    rescheduleFeePercentage: z.number().min(0).max(100).optional(), // Override default percentage
-    doctorNotes: z.string().max(500).optional()
+    newAppointmentDate: z.string().min(1, "New appointment date is required"), // ISO date string (YYYY-MM-DD)
+    newAppointmentTime: z.string()
+      .min(1, "New appointment time is required")
+      .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "New appointment time must be in HH:MM format (e.g., 14:30)"), // "HH:MM" format
+    rescheduleFee: z.union([
+      z.number().min(0, "Reschedule fee must be 0 or greater"),
+      z.null(),
+      z.undefined()
+    ]).optional(), // If not provided, uses default percentage
+    rescheduleFeePercentage: z.union([
+      z.number().min(0, "Reschedule fee percentage must be 0 or greater").max(100, "Reschedule fee percentage cannot exceed 100%"),
+      z.null(),
+      z.undefined()
+    ]).optional(), // Override default percentage (0-100)
+    doctorNotes: z.string()
+      .max(500, "Doctor notes must not exceed 500 characters")
+      .nullish() // Optional string or null/undefined
   }),
   params: z.object({
     id: z.string().min(1, "Reschedule request ID is required")
