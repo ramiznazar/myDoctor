@@ -121,7 +121,7 @@ const listTransactions = async (filter = {}) => {
 
   const [transactions, total] = await Promise.all([
     Transaction.find(query)
-      .populate('userId', 'fullName email')
+      .populate('userId', 'fullName email profileImage')
       .populate('relatedAppointmentId')
       .populate('relatedSubscriptionId')
       .populate('relatedProductId')
@@ -149,7 +149,7 @@ const listTransactions = async (filter = {}) => {
  */
 const getTransaction = async (id) => {
   const transaction = await Transaction.findById(id)
-    .populate('userId', 'fullName email')
+    .populate('userId', 'fullName email profileImage')
     .populate('relatedAppointmentId')
     .populate('relatedSubscriptionId')
     .populate('relatedProductId');
