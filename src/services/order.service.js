@@ -131,7 +131,7 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
  */
 const getOrderById = async (orderId, userId, userRole) => {
   const order = await Order.findById(orderId)
-    .populate('patientId', 'fullName email phone profileImage')
+    .populate('patientId', 'fullName email phone')
     .populate('pharmacyId')
     .populate('ownerId', 'fullName email')
     .populate('items.productId')
@@ -170,7 +170,6 @@ const getPatientOrders = async (patientId, options = {}) => {
 
   const [orders, total] = await Promise.all([
     Order.find(query)
-      .populate('patientId', 'fullName email phone profileImage')
       .populate('pharmacyId', 'name logo')
       .populate('ownerId', 'fullName')
       .populate('items.productId', 'name images price discountPrice')
@@ -224,7 +223,7 @@ const getPharmacyOrders = async (ownerId, options = {}) => {
 
   const [orders, total] = await Promise.all([
     Order.find(query)
-      .populate('patientId', 'fullName email phone profileImage')
+      .populate('patientId', 'fullName email phone')
       .populate('pharmacyId', 'name')
       .populate('items.productId', 'name images price discountPrice')
       .sort({ createdAt: -1 })
@@ -275,7 +274,7 @@ const getAllOrders = async (options = {}) => {
 
   const [orders, total] = await Promise.all([
     Order.find(query)
-      .populate('patientId', 'fullName email phone profileImage')
+      .populate('patientId', 'fullName email phone')
       .populate('pharmacyId', 'name logo')
       .populate('ownerId', 'fullName email')
       .populate('items.productId', 'name images price discountPrice')
