@@ -265,12 +265,13 @@ const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null
   }
 
   // Calculate fee and totals
+  // Fee is deducted FROM the withdrawal amount, not added to it
   const feePercent = withdrawalFeePercent !== null ? withdrawalFeePercent : 0;
   const withdrawalFeeAmount = (withdrawalAmount * feePercent) / 100;
-  const totalDeducted = withdrawalAmount + withdrawalFeeAmount;
-  const netAmount = withdrawalAmount; // Doctor receives the original amount
+  const netAmount = withdrawalAmount - withdrawalFeeAmount; // Doctor receives withdrawal amount minus fee
+  const totalDeducted = withdrawalAmount; // Total deducted from balance is the original withdrawal amount (fee is included)
 
-  // Check if user has sufficient balance (must cover amount + fee)
+  // Check if user has sufficient balance (must cover the withdrawal amount)
   if ((user.balance || 0) < totalDeducted) {
     request.status = 'REJECTED';
     request.rejectionReason = `Insufficient balance. Required: ${totalDeducted.toFixed(2)}, Available: ${(user.balance || 0).toFixed(2)}`;
@@ -278,7 +279,7 @@ const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null
     throw new Error(`Insufficient balance. Required: $${totalDeducted.toFixed(2)}, Available: $${(user.balance || 0).toFixed(2)}`);
   }
 
-  // Deduct total amount (withdrawal + fee) from balance
+  // Deduct withdrawal amount from balance (fee is already included in the withdrawal amount)
   user.balance = (user.balance || 0) - totalDeducted;
   await user.save();
 
@@ -295,7 +296,7 @@ const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null
   // Create transaction record for the withdrawal
   await Transaction.create({
     userId: user._id,
-    amount: -totalDeducted, // Negative for withdrawal (includes fee)
+    amount: -totalDeducted, // Negative for withdrawal (amount deducted from balance)
     currency: 'EUR',
     status: 'SUCCESS',
     provider: 'WITHDRAWAL',
@@ -304,35 +305,17 @@ const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null
       type: 'WITHDRAWAL',
       requestId: request._id,
       adminId,
-      withdrawalAmount: withdrawalAmount,
+      withdrawalAmount: withdrawalAmount, // Original requested amount
       withdrawalFeePercent: feePercent,
-      withdrawalFeeAmount: withdrawalFeeAmount,
-      totalDeducted: totalDeducted,
-      netAmount: netAmount,
+      withdrawalFeeAmount: withdrawalFeeAmount, // Fee deducted from withdrawal
+      totalDeducted: totalDeducted, // Amount deducted from balance (same as withdrawalAmount)
+      netAmount: netAmount, // Amount doctor actually receives (withdrawalAmount - fee)
       timestamp: new Date()
     }
   });
 
-  // Create separate transaction record for the fee (optional, for tracking)
-  if (withdrawalFeeAmount > 0) {
-    await Transaction.create({
-      userId: user._id,
-      amount: -withdrawalFeeAmount, // Negative for fee deduction
-      currency: 'EUR',
-      status: 'SUCCESS',
-      provider: 'WITHDRAWAL_FEE',
-      providerReference: `WITHDRAW-FEE-${Date.now()}-${user._id}`,
-      metadata: {
-        type: 'WITHDRAWAL_FEE',
-        requestId: request._id,
-        adminId,
-        withdrawalAmount: withdrawalAmount,
-        withdrawalFeePercent: feePercent,
-        withdrawalFeeAmount: withdrawalFeeAmount,
-        timestamp: new Date()
-      }
-    });
-  }
+  // Note: Fee is already included in the withdrawal amount, so no separate fee transaction needed
+  // The fee is just a portion of the withdrawal that the doctor doesn't receive
 
   return request;
 };
