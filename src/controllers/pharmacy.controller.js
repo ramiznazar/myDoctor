@@ -3,14 +3,20 @@ const pharmacyService = require('../services/pharmacy.service');
 
 /**
  * Create pharmacy
- * If doctor or admin creates pharmacy, automatically set ownerId to their userId
+ * If pharmacy or admin creates pharmacy, automatically set ownerId to their userId
  */
 exports.create = asyncHandler(async (req, res) => {
   let pharmacyData = { ...req.body };
   
-  // If doctor or admin creates pharmacy, automatically set ownerId to their userId
-  if (req.userRole === 'DOCTOR' || req.userRole === 'ADMIN') {
+  if (req.userRole === 'PHARMACY') {
     pharmacyData.ownerId = req.userId;
+  } else if (req.userRole === 'ADMIN') {
+    if (!pharmacyData.ownerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'ownerId is required when admin creates a pharmacy'
+      });
+    }
   }
   // If ownerId is explicitly provided in body, it will be overridden by the above logic
   
@@ -19,12 +25,20 @@ exports.create = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Get my pharmacy profile (for pharmacy user)
+ */
+exports.getMyPharmacy = asyncHandler(async (req, res) => {
+  const result = await pharmacyService.getPharmacyByOwnerIdAnyStatus(req.userId);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+/**
  * Update pharmacy
- * Admin can update any pharmacy, Doctor can only update their own pharmacy
+ * Admin can update any pharmacy, Pharmacy can only update their own pharmacy
  */
 exports.update = asyncHandler(async (req, res) => {
-  // If user is a doctor (not admin), verify they own this pharmacy
-  if (req.userRole === 'DOCTOR') {
+  // If user is a pharmacy (not admin), verify they own this pharmacy
+  if (req.userRole === 'PHARMACY') {
     // Get pharmacy without populating to check ownerId directly
     const Pharmacy = require('../models/pharmacy.model');
     const pharmacy = await Pharmacy.findById(req.params.id);
@@ -32,7 +46,7 @@ exports.update = asyncHandler(async (req, res) => {
     if (!pharmacy) {
       return res.status(404).json({ success: false, message: 'Pharmacy not found' });
     }
-    // Check if the doctor owns this pharmacy
+    // Check if the pharmacy owns this pharmacy
     // ownerId is stored as ObjectId, so compare as strings
     if (pharmacy.ownerId.toString() !== req.userId.toString()) {
       return res.status(403).json({ 

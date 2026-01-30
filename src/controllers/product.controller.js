@@ -36,32 +36,21 @@ exports.create = asyncHandler(async (req, res) => {
     conditionCheck: req.userRole === 'ADMIN' && pharmacyId
   });
   
-  // If doctor creates product, check if they have a pharmacy and auto-link
-  if (req.userRole === 'DOCTOR') {
-    const doctorPharmacy = await pharmacyService.getPharmacyByOwnerId(req.userId);
-    
-    if (doctorPharmacy) {
-      // Doctor has a pharmacy - automatically link product to it
-      sellerId = doctorPharmacy.ownerId?._id || doctorPharmacy.ownerId;
-      sellerType = 'PHARMACY';
-    } else if (pharmacyId) {
-      // Doctor provided pharmacyId (maybe selecting another pharmacy)
-      const pharmacy = await pharmacyService.getPharmacy(pharmacyId);
-      
-      if (!pharmacy) {
-        return res.status(404).json({ 
-          success: false, 
-          message: 'Pharmacy not found' 
-        });
-      }
-      
-      sellerId = pharmacy.ownerId?._id || pharmacy.ownerId;
-      sellerType = 'PHARMACY';
-    } else {
-      // Doctor has no pharmacy and didn't provide pharmacyId
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Please create a pharmacy first or select an existing pharmacy to link this product' 
+  // If pharmacy creates product, require approval and pharmacy profile exists
+  if (req.userRole === 'PHARMACY') {
+    const status = req.user?.status?.toUpperCase();
+    if (status !== 'APPROVED') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your pharmacy account is not approved yet. You cannot add products until approved.'
+      });
+    }
+
+    const myPharmacy = await pharmacyService.getPharmacyByOwnerId(req.userId);
+    if (!myPharmacy) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please create your pharmacy profile first before adding products'
       });
     }
   }

@@ -85,11 +85,11 @@ exports.getAllPharmacies = asyncHandler(async (req, res) => {
     // Remove ownerRole from query as it's not a pharmacy field
     delete modifiedQuery.ownerRole;
     
-    const result = await pharmacyService.listPharmacies(modifiedQuery);
+    const result = await pharmacyService.listPharmaciesAdmin(modifiedQuery);
     res.json({ success: true, message: 'OK', data: result });
   } else {
     // No role filter, return all pharmacies
-    const result = await pharmacyService.listPharmacies(req.query);
+    const result = await pharmacyService.listPharmaciesAdmin(req.query);
     res.json({ success: true, message: 'OK', data: result });
   }
 });

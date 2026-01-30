@@ -29,16 +29,16 @@ router.post(
 /**
  * @route   GET /api/orders
  * @desc    Get user orders (Patient gets their orders, Doctor gets their pharmacy orders)
- * @access  Private (Patient, Doctor)
+ * @access  Private (Patient, Pharmacy)
  */
 router.get(
   '/',
-  authGuard(['PATIENT', 'DOCTOR']),
+  authGuard(['PATIENT', 'PHARMACY']),
   validate(filterOrdersValidator),
   asyncHandler(async (req, res) => {
     if (req.userRole === 'PATIENT') {
       return orderController.getPatientOrders(req, res);
-    } else if (req.userRole === 'DOCTOR') {
+    } else if (req.userRole === 'PHARMACY') {
       return orderController.getPharmacyOrders(req, res);
     }
   })
@@ -47,11 +47,11 @@ router.get(
 /**
  * @route   GET /api/orders/:id
  * @desc    Get order by ID
- * @access  Private (Patient, Doctor, Admin)
+ * @access  Private (Patient, Pharmacy, Admin)
  */
 router.get(
   '/:id',
-  authGuard(['PATIENT', 'DOCTOR', 'ADMIN']),
+  authGuard(['PATIENT', 'PHARMACY', 'ADMIN']),
   validate(getOrderByIdValidator),
   asyncHandler(orderController.getById)
 );
@@ -59,11 +59,11 @@ router.get(
 /**
  * @route   PUT /api/orders/:id/status
  * @desc    Update order status
- * @access  Private (Doctor, Admin)
+ * @access  Private (Pharmacy, Admin)
  */
 router.put(
   '/:id/status',
-  authGuard(['DOCTOR', 'ADMIN']),
+  authGuard(['PHARMACY', 'ADMIN']),
   validate(updateOrderStatusValidator),
   asyncHandler(orderController.updateStatus)
 );
@@ -71,11 +71,11 @@ router.put(
 /**
  * @route   PUT /api/orders/:id/shipping
  * @desc    Update shipping fee (Doctor sets final shipping fee after order creation)
- * @access  Private (Doctor, Admin)
+ * @access  Private (Pharmacy, Admin)
  */
 router.put(
   '/:id/shipping',
-  authGuard(['DOCTOR', 'ADMIN']),
+  authGuard(['PHARMACY', 'ADMIN']),
   validate(updateShippingFeeValidator),
   asyncHandler(orderController.updateShippingFee)
 );
@@ -95,11 +95,11 @@ router.post(
 /**
  * @route   POST /api/orders/:id/cancel
  * @desc    Cancel order
- * @access  Private (Patient, Doctor, Admin)
+ * @access  Private (Patient, Pharmacy, Admin)
  */
 router.post(
   '/:id/cancel',
-  authGuard(['PATIENT', 'DOCTOR', 'ADMIN']),
+  authGuard(['PATIENT', 'PHARMACY', 'ADMIN']),
   validate(cancelOrderValidator),
   asyncHandler(orderController.cancel)
 );
@@ -107,11 +107,11 @@ router.post(
 /**
  * @route   GET /api/pharmacy/orders
  * @desc    Get pharmacy orders (for pharmacy owner)
- * @access  Private (Doctor)
+ * @access  Private (Pharmacy)
  */
 router.get(
   '/pharmacy/orders',
-  authGuard(['DOCTOR']),
+  authGuard(['PHARMACY']),
   validate(filterOrdersValidator),
   asyncHandler(orderController.getPharmacyOrders)
 );

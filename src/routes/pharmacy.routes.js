@@ -12,11 +12,11 @@ const asyncHandler = require('../middleware/asyncHandler');
 /**
  * @route   POST /api/pharmacy
  * @desc    Create pharmacy
- * @access  Private (Admin, Doctor)
+ * @access  Private (Admin, Pharmacy)
  */
 router.post(
   '/',
-  authGuard(['ADMIN', 'DOCTOR']),
+  authGuard(['ADMIN', 'PHARMACY']),
   validate(createPharmacyValidator),
   asyncHandler(pharmacyController.create)
 );
@@ -24,13 +24,24 @@ router.post(
 /**
  * @route   PUT /api/pharmacy/:id
  * @desc    Update pharmacy
- * @access  Private (Admin, Doctor - can only update their own pharmacy)
+ * @access  Private (Admin, Pharmacy - can only update their own pharmacy)
  */
 router.put(
   '/:id',
-  authGuard(['ADMIN', 'DOCTOR']),
+  authGuard(['ADMIN', 'PHARMACY']),
   validate(updatePharmacyValidator),
   asyncHandler(pharmacyController.update)
+);
+
+/**
+ * @route   GET /api/pharmacy/me
+ * @desc    Get my pharmacy profile
+ * @access  Private (Pharmacy)
+ */
+router.get(
+  '/me',
+  authGuard(['PHARMACY']),
+  asyncHandler(pharmacyController.getMyPharmacy)
 );
 
 /**

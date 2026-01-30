@@ -21,7 +21,7 @@ const registerUser = async (data) => {
   }
 
   // Determine default status based on role
-  // Patients are auto-approved, Doctors need admin approval
+  // Patients are auto-approved, Doctors/Pharmacies need admin approval
   const defaultStatus = role.toUpperCase() === 'PATIENT' ? 'APPROVED' : 'PENDING';
 
   // Create user (password will be hashed by pre-save hook in user.model.js)
@@ -112,7 +112,7 @@ const loginUser = async (data) => {
     throw new Error('Invalid email or password');
   }
 
-  // After password validation, check if doctor is pending approval
+  // After password validation, check if doctor/pharmacy is pending approval
   if (user.role === 'DOCTOR' && user.status === 'PENDING') {
     // Still allow login but return a message
     // Generate JWT token
@@ -130,6 +130,23 @@ const loginUser = async (data) => {
       user: userObj,
       token,
       message: 'Your account is pending admin approval. You can complete your profile and purchase a subscription, but you will not be visible to patients until approved.'
+    };
+  }
+
+  if (user.role === 'PHARMACY' && user.status === 'PENDING') {
+    const token = generateToken({
+      userId: user._id.toString(),
+      email: user.email,
+      role: user.role
+    });
+
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    return {
+      user: userObj,
+      token,
+      message: 'Your account is pending admin approval. You can complete your profile, but you cannot sell products until approved.'
     };
   }
 

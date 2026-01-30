@@ -39,14 +39,14 @@ const createProduct = async (data) => {
   }
 
   // Verify seller type matches user role
-  // Exception: Admin and Doctor can create pharmacy products (sellerType = PHARMACY)
+  // Exception: Admin can create pharmacy products (sellerType = PHARMACY)
   if (sellerType === 'DOCTOR' && seller.role !== 'DOCTOR') {
     throw new Error('Seller must be a doctor');
   }
 
-  // Allow ADMIN and DOCTOR to create pharmacy products
-  if (sellerType === 'PHARMACY' && seller.role !== 'PHARMACY' && seller.role !== 'ADMIN' && seller.role !== 'DOCTOR') {
-    throw new Error('Only pharmacy users, admins, or doctors can create pharmacy products');
+  // Allow ADMIN to create pharmacy products on behalf of a PHARMACY user
+  if (sellerType === 'PHARMACY' && seller.role !== 'PHARMACY') {
+    throw new Error('Seller must be a pharmacy');
   }
 
   if (sellerType === 'ADMIN' && seller.role !== 'ADMIN') {
@@ -205,14 +205,17 @@ const listProducts = async (filter = {}) => {
     limit = 10
   } = filter;
 
-  const query = { isActive: true };
+  const query = { isActive: true, sellerType: { $ne: 'DOCTOR' } };
 
   if (sellerId) {
     query.sellerId = sellerId; // Mongoose automatically handles string to ObjectId conversion
   }
 
   if (sellerType) {
-    query.sellerType = sellerType.toUpperCase();
+    const normalizedSellerType = sellerType.toUpperCase();
+    if (normalizedSellerType !== 'DOCTOR') {
+      query.sellerType = normalizedSellerType;
+    }
   }
 
   if (category) {

@@ -2,11 +2,11 @@ const { z } = require("zod");
 
 /**
  * Create pharmacy validator
- * ownerId is optional for doctors (auto-set to their userId)
+ * ownerId is optional (auto-set by backend)
  */
 const createPharmacyValidator = z.object({
   body: z.object({
-    ownerId: z.string().min(1).optional(), // Optional - auto-set for doctors
+    ownerId: z.string().min(1).optional(), // Optional - auto-set by backend
     name: z.string().min(1, "Pharmacy name is required"),
     logo: z.union([
       z.string().url("Invalid logo URL"),

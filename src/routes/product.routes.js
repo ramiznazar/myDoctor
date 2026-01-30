@@ -13,11 +13,11 @@ const asyncHandler = require('../middleware/asyncHandler');
 /**
  * @route   POST /api/products
  * @desc    Create product
- * @access  Private (Doctor/Pharmacy/Admin)
+ * @access  Private (Pharmacy/Admin)
  */
 router.post(
   '/',
-  authGuard(['DOCTOR', 'PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'ADMIN']),
   validate(createProductValidator),
   asyncHandler(productController.create)
 );
@@ -25,11 +25,11 @@ router.post(
 /**
  * @route   PUT /api/products/:id
  * @desc    Update product
- * @access  Private (Doctor/Pharmacy/Admin)
+ * @access  Private (Pharmacy/Admin)
  */
 router.put(
   '/:id',
-  authGuard(['DOCTOR', 'PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'ADMIN']),
   validate(updateProductValidator),
   asyncHandler(productController.update)
 );
@@ -58,11 +58,11 @@ router.get(
 /**
  * @route   DELETE /api/products/:id
  * @desc    Delete product
- * @access  Private (Doctor/Pharmacy/Admin)
+ * @access  Private (Pharmacy/Admin)
  */
 router.delete(
   '/:id',
-  authGuard(['DOCTOR', 'PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'ADMIN']),
   asyncHandler(productController.delete)
 );
 

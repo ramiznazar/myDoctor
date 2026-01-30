@@ -134,13 +134,47 @@ const deletePlan = async (id) => {
   return { message: 'Subscription plan deleted successfully' };
 };
 
+/**
+ * Get plan features by plan name
+ * @param {string} planName - Plan name (BASE, PRO, PREMIUM)
+ * @returns {Array<string>} Array of feature constants
+ */
+const getPlanFeatures = (planName) => {
+  const upperName = planName.toUpperCase();
+  return PLAN_FEATURES[upperName] || [];
+};
+
+/**
+ * Create plan with auto-populated features based on plan name
+ * @param {Object} data - Plan data
+ * @returns {Promise<Object>} Created plan
+ */
+const createPlanWithFeatures = async (data) => {
+  const { name, price, durationInDays } = data;
+  
+  // Auto-populate features if not provided
+  let features = data.features;
+  if (!features || features.length === 0) {
+    features = getPlanFeatures(name);
+  }
+  
+  return createPlan({
+    name,
+    price,
+    durationInDays,
+    features
+  });
+};
+
 module.exports = {
   createPlan,
+  createPlanWithFeatures,
   getAllPlans,
   getActivePlans,
   getPlanById,
   updatePlan,
-  deletePlan
+  deletePlan,
+  getPlanFeatures
 };
 
 

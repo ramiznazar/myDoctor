@@ -15,7 +15,12 @@ const createProductValidator = z.object({
     description: z.string().optional(),
     sku: z.string().optional(),
     discountPrice: z.number().nonnegative("Discount price must be non-negative").optional(),
-    images: z.array(z.string().url("Invalid image URL")).optional(),
+    images: z.array(
+      z.union([
+        z.string().url("Invalid image URL"),
+        z.string().regex(/^\/uploads\//, "Image must be a valid URL or upload path")
+      ])
+    ).optional(),
     category: z.string().optional(),
     subCategory: z.string().optional(),
     tags: z.array(z.string()).optional(),
@@ -35,7 +40,12 @@ const updateProductValidator = z.object({
     description: z.string().optional(),
     sku: z.string().optional(),
     discountPrice: z.number().nonnegative("Discount price must be non-negative").optional(),
-    images: z.array(z.string().url("Invalid image URL")).optional(),
+    images: z.array(
+      z.union([
+        z.string().url("Invalid image URL"),
+        z.string().regex(/^\/uploads\//, "Image must be a valid URL or upload path")
+      ])
+    ).optional(),
     category: z.string().optional(),
     subCategory: z.string().optional(),
     tags: z.array(z.string()).optional(),

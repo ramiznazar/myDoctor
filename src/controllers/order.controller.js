@@ -39,6 +39,15 @@ exports.getPatientOrders = asyncHandler(async (req, res) => {
  * Get pharmacy orders (for pharmacy owner/doctor)
  */
 exports.getPharmacyOrders = asyncHandler(async (req, res) => {
+  if (req.userRole === 'PHARMACY') {
+    const status = req.user?.status?.toUpperCase();
+    if (status !== 'APPROVED') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your pharmacy account is not approved yet. You cannot manage orders until approved.'
+      });
+    }
+  }
   const result = await orderService.getPharmacyOrders(req.userId, req.query);
   res.json({ success: true, message: 'OK', data: result });
 });
@@ -55,6 +64,15 @@ exports.getAllOrders = asyncHandler(async (req, res) => {
  * Update order status
  */
 exports.updateStatus = asyncHandler(async (req, res) => {
+  if (req.userRole === 'PHARMACY') {
+    const status = req.user?.status?.toUpperCase();
+    if (status !== 'APPROVED') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your pharmacy account is not approved yet. You cannot update order status until approved.'
+      });
+    }
+  }
   const { status } = req.body;
   const result = await orderService.updateOrderStatus(
     req.params.id,
@@ -70,6 +88,15 @@ exports.updateStatus = asyncHandler(async (req, res) => {
  * Only pharmacy owner (doctor) can update shipping fee
  */
 exports.updateShippingFee = asyncHandler(async (req, res) => {
+  if (req.userRole === 'PHARMACY') {
+    const status = req.user?.status?.toUpperCase();
+    if (status !== 'APPROVED') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your pharmacy account is not approved yet. You cannot update shipping until approved.'
+      });
+    }
+  }
   const { shippingFee } = req.body;
   const result = await orderService.updateShippingFee(
     req.params.id,

@@ -146,7 +146,7 @@ const getOrderById = async (orderId, userId, userRole) => {
     throw new Error('Unauthorized: You can only view your own orders');
   }
 
-  if (userRole === 'DOCTOR' && order.ownerId._id.toString() !== userId.toString()) {
+  if (userRole === 'PHARMACY' && order.ownerId._id.toString() !== userId.toString()) {
     throw new Error('Unauthorized: You can only view orders for your pharmacy');
   }
 
@@ -311,11 +311,11 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
   }
 
   // Authorization check
-  if (userRole === 'DOCTOR' && order.ownerId.toString() !== userId.toString()) {
+  if (userRole === 'PHARMACY' && order.ownerId.toString() !== userId.toString()) {
     throw new Error('Unauthorized: You can only update orders for your pharmacy');
   }
 
-  if (userRole !== 'ADMIN' && userRole !== 'DOCTOR') {
+  if (userRole !== 'ADMIN' && userRole !== 'PHARMACY') {
     throw new Error('Unauthorized: Only pharmacy owners and admins can update order status');
   }
 
@@ -360,7 +360,7 @@ const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
   }
 
   // Authorization check - only pharmacy owner can update shipping
-  if (userRole !== 'DOCTOR' || order.ownerId.toString() !== userId.toString()) {
+  if (userRole !== 'PHARMACY' || order.ownerId.toString() !== userId.toString()) {
     throw new Error('Unauthorized: Only the pharmacy owner can update shipping fee');
   }
 

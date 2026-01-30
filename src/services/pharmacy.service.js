@@ -29,6 +29,23 @@ const createPharmacy = async (data) => {
 };
 
 /**
+ * Get pharmacy by owner ID (any owner status)
+ * Used for private pharmacy dashboard/profile access.
+ * @param {string} ownerId - Owner User ID
+ * @returns {Promise<Object|null>} Pharmacy or null if not found
+ */
+const getPharmacyByOwnerIdAnyStatus = async (ownerId) => {
+  const pharmacy = await Pharmacy.findOne({ ownerId })
+    .populate('ownerId', 'fullName email phone profileImage role status');
+
+  if (!pharmacy) {
+    return null;
+  }
+
+  return pharmacy;
+};
+
+/**
  * Update pharmacy
  * @param {string} id - Pharmacy ID
  * @param {Object} data - Update data
@@ -63,9 +80,22 @@ const updatePharmacy = async (id, data) => {
  */
 const getPharmacy = async (id) => {
   const pharmacy = await Pharmacy.findById(id)
-    .populate('ownerId', 'fullName email phone profileImage');
+    .populate('ownerId', 'fullName email phone profileImage role status');
   
   if (!pharmacy) {
+    throw new Error('Pharmacy not found');
+  }
+
+  // Public-facing invariant: only active pharmacies owned by APPROVED PHARMACY users
+  // (Admins can still read via other endpoints if needed)
+  if (!pharmacy.isActive) {
+    throw new Error('Pharmacy not found');
+  }
+
+  const owner = pharmacy.ownerId;
+  const ownerRole = typeof owner === 'object' ? owner.role : null;
+  const ownerStatus = typeof owner === 'object' ? owner.status : null;
+  if (ownerRole !== 'PHARMACY' || ownerStatus !== 'APPROVED') {
     throw new Error('Pharmacy not found');
   }
 
@@ -79,7 +109,18 @@ const getPharmacy = async (id) => {
  */
 const getPharmacyByOwnerId = async (ownerId) => {
   const pharmacy = await Pharmacy.findOne({ ownerId, isActive: true })
-    .populate('ownerId', 'fullName email phone profileImage');
+    .populate('ownerId', 'fullName email phone profileImage role status');
+
+  if (!pharmacy) {
+    return null;
+  }
+
+  const owner = pharmacy.ownerId;
+  const ownerRole = typeof owner === 'object' ? owner.role : null;
+  const ownerStatus = typeof owner === 'object' ? owner.status : null;
+  if (ownerRole !== 'PHARMACY' || ownerStatus !== 'APPROVED') {
+    return null;
+  }
   
   return pharmacy;
 };
@@ -100,11 +141,29 @@ const listPharmacies = async (filter = {}) => {
 
   const query = { isActive: true };
 
+  // Only pharmacies owned by APPROVED PHARMACY users are visible publicly.
+  // Apply this constraint even when filters are used.
+  const approvedPharmacyUsers = await User.find({ role: 'PHARMACY', status: 'APPROVED' }).select('_id');
+  const approvedPharmacyUserIds = approvedPharmacyUsers.map(u => u._id);
+  query.ownerId = { $in: approvedPharmacyUserIds };
+
   if (ownerId) {
     // Handle both single ownerId and $in operator for multiple ownerIds
     if (typeof ownerId === 'object' && ownerId.$in) {
-      query.ownerId = { $in: ownerId.$in };
+      query.ownerId = { $in: ownerId.$in.filter(id => approvedPharmacyUserIds.some(aid => aid.toString() === id.toString())) };
     } else {
+      const isApprovedOwner = approvedPharmacyUserIds.some(id => id.toString() === ownerId.toString());
+      if (!isApprovedOwner) {
+        return {
+          pharmacies: [],
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            pages: 0
+          }
+        };
+      }
       query.ownerId = ownerId;
     }
   }
@@ -125,6 +184,59 @@ const listPharmacies = async (filter = {}) => {
   const [pharmacies, total] = await Promise.all([
     Pharmacy.find(query)
       .populate('ownerId', 'fullName email phone profileImage')
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 }),
+    Pharmacy.countDocuments(query)
+  ]);
+
+  return {
+    pharmacies,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit)
+    }
+  };
+};
+
+/**
+ * List pharmacies for admin panel (includes all owner statuses)
+ * @param {Object} filter - Filter criteria
+ * @returns {Promise<Object>} Pharmacies and pagination info
+ */
+const listPharmaciesAdmin = async (filter = {}) => {
+  const {
+    ownerId,
+    city,
+    search,
+    page = 1,
+    limit = 10
+  } = filter;
+
+  const query = {};
+
+  if (ownerId) {
+    query.ownerId = ownerId;
+  }
+
+  if (city) {
+    query['address.city'] = { $regex: city, $options: 'i' };
+  }
+
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { 'address.city': { $regex: search, $options: 'i' } }
+    ];
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [pharmacies, total] = await Promise.all([
+    Pharmacy.find(query)
+      .populate('ownerId', 'fullName email phone profileImage role status')
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 }),
@@ -164,7 +276,9 @@ module.exports = {
   updatePharmacy,
   getPharmacy,
   getPharmacyByOwnerId,
+  getPharmacyByOwnerIdAnyStatus,
   listPharmacies,
+  listPharmaciesAdmin,
   deletePharmacy
 };
 
