@@ -29,7 +29,7 @@ const getAllPlans = async (filter = {}) => {
   }
 
   const plans = await SubscriptionPlan.find(query).sort({ price: 1 });
-  return subscriptionPolicy.dedupePlansByName(plans).map(subscriptionPolicy.attachPolicyToPlan);
+  return plans.map(subscriptionPolicy.attachPolicyToPlan);
 };
 
 /**
@@ -44,7 +44,7 @@ const getActivePlans = async () => {
     status: 'ACTIVE'
   }).sort({ price: 1 });
 
-  return subscriptionPolicy.dedupePlansByName(plans).map(subscriptionPolicy.attachPolicyToPlan);
+  return plans.map(subscriptionPolicy.attachPolicyToPlan);
 };
 
 /**
