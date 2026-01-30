@@ -2,6 +2,7 @@ const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const User = require('../models/user.model');
 const Appointment = require('../models/appointment.model');
 const Conversation = require('../models/conversation.model');
+const DoctorSubscription = require('../models/doctorSubscription.model');
 
 const FIXED_PLAN_NAMES = ['BASIC', 'PRO', 'PREMIUM'];
 
@@ -94,9 +95,41 @@ const attachPolicyToPlan = (planDoc) => {
 const ensureFixedPlansExist = async () => {
   const existing = await SubscriptionPlan.find({
     name: { $in: [...FIXED_PLAN_NAMES, 'FULL', 'MEDIUM'] }
-  });
+  }).sort({ createdAt: 1 });
 
-  const existingByName = new Map(existing.map((p) => [normalizePlanName(p.name), p]));
+  const existingByName = new Map();
+
+  for (const planName of FIXED_PLAN_NAMES) {
+    const candidates = existing.filter((p) => normalizePlanName(p.name) === planName);
+    if (candidates.length === 0) continue;
+
+    const canonical = candidates.find((p) => p.name === planName && p.status === 'ACTIVE')
+      || candidates.find((p) => p.status === 'ACTIVE')
+      || candidates.find((p) => p.name === planName)
+      || candidates[0];
+
+    const duplicates = candidates.filter((p) => p._id.toString() !== canonical._id.toString());
+
+    if (duplicates.length > 0) {
+      for (const dup of duplicates) {
+        await User.updateMany(
+          { subscriptionPlan: dup._id },
+          { $set: { subscriptionPlan: canonical._id } }
+        );
+
+        await DoctorSubscription.updateMany(
+          { planId: dup._id, status: 'ACTIVE' },
+          { $set: { planId: canonical._id } }
+        );
+
+        dup.status = 'INACTIVE';
+        dup.name = `ARCHIVED_${planName}_${dup._id.toString()}`;
+        await dup.save();
+      }
+    }
+
+    existingByName.set(planName, canonical);
+  }
 
   const createdOrUpdated = [];
 
@@ -137,6 +170,11 @@ const ensureFixedPlansExist = async () => {
     }
 
     if (!found.status) {
+      found.status = 'ACTIVE';
+      changed = true;
+    }
+
+    if (found.status !== 'ACTIVE') {
       found.status = 'ACTIVE';
       changed = true;
     }
