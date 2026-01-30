@@ -91,12 +91,68 @@ const attachPolicyToPlan = (planDoc) => {
   };
 };
 
+const dedupePlansByName = (plans) => {
+  const list = Array.isArray(plans) ? plans : [];
+  const seen = new Set();
+  const out = [];
+
+  for (const plan of list) {
+    const name = normalizePlanName(plan?.name);
+    if (!name) continue;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push(plan);
+  }
+
+  return out;
+};
+
 const ensureFixedPlansExist = async () => {
   const existing = await SubscriptionPlan.find({
     name: { $in: [...FIXED_PLAN_NAMES, 'FULL', 'MEDIUM'] }
   });
 
-  const existingByName = new Map(existing.map((p) => [normalizePlanName(p.name), p]));
+  const grouped = new Map();
+  for (const p of existing) {
+    const key = normalizePlanName(p.name);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(p);
+  }
+
+  const existingByName = new Map();
+
+  for (const [name, group] of grouped.entries()) {
+    if (!group || group.length === 0) continue;
+
+    group.sort((a, b) => {
+      const aActive = a.status === 'ACTIVE' ? 1 : 0;
+      const bActive = b.status === 'ACTIVE' ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+
+      const aUpdated = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bUpdated = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+
+      const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bCreated - aCreated;
+    });
+
+    const primary = group[0];
+    existingByName.set(name, primary);
+
+    const duplicates = group.slice(1);
+    if (duplicates.length > 0) {
+      await Promise.all(
+        duplicates.map(async (dup) => {
+          if (dup.status !== 'INACTIVE') {
+            dup.status = 'INACTIVE';
+            await dup.save();
+          }
+        })
+      );
+    }
+  }
 
   const createdOrUpdated = [];
 
@@ -322,6 +378,7 @@ module.exports = {
   getPlanPolicy,
   getPlanFeatures,
   attachPolicyToPlan,
+  dedupePlansByName,
   ensureFixedPlansExist,
   getSubscriptionWindow,
   computeDoctorUsage,

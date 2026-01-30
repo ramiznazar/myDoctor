@@ -132,7 +132,7 @@ const listPlans = async (filter = {}) => {
   }
 
   const plans = await SubscriptionPlan.find(query).sort({ price: 1 });
-  return plans.map(subscriptionPolicy.attachPolicyToPlan);
+  return subscriptionPolicy.dedupePlansByName(plans).map(subscriptionPolicy.attachPolicyToPlan);
 };
 
 module.exports = {
