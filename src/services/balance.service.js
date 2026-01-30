@@ -373,7 +373,7 @@ const getWithdrawalRequests = async (filter = {}) => {
 
   const [requests, total] = await Promise.all([
     WithdrawalRequest.find(query)
-      .populate('userId', 'fullName email balance')
+      .populate('userId', 'fullName email balance role')
       .populate('approvedBy', 'fullName email')
       .sort({ createdAt: -1 })
       .skip(skip)
