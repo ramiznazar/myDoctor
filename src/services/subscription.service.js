@@ -1,5 +1,6 @@
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const User = require('../models/user.model');
+const subscriptionPolicy = require('./subscriptionPolicy.service');
 
 /**
  * Create subscription plan
@@ -7,17 +8,9 @@ const User = require('../models/user.model');
  * @returns {Promise<Object>} Created plan
  */
 const createPlan = async (data) => {
-  const { name, price, durationInDays, features, isActive } = data;
-
-  const plan = await SubscriptionPlan.create({
-    name: name.toUpperCase(),
-    price,
-    durationInDays,
-    features: features || [],
-    isActive: isActive !== undefined ? isActive : true
-  });
-
-  return plan;
+  const error = new Error('Subscription plans are fixed. Admin can only update plan prices.');
+  error.statusCode = 403;
+  throw error;
 };
 
 /**
@@ -27,25 +20,43 @@ const createPlan = async (data) => {
  * @returns {Promise<Object>} Updated plan
  */
 const updatePlan = async (id, data) => {
+  await subscriptionPolicy.ensureFixedPlansExist();
+
   const plan = await SubscriptionPlan.findById(id);
   
   if (!plan) {
-    throw new Error('Subscription plan not found');
+    const error = new Error('Subscription plan not found');
+    error.statusCode = 404;
+    throw error;
   }
 
-  Object.keys(data).forEach(key => {
-    if (data[key] !== undefined) {
-      if (key === 'name') {
-        plan[key] = data[key].toUpperCase();
-      } else {
-        plan[key] = data[key];
-      }
-    }
-  });
+  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name);
+  if (!subscriptionPolicy.FIXED_PLAN_NAMES.includes(normalizedName)) {
+    const error = new Error('Subscription plan not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const allowedKeys = ['price'];
+  const providedKeys = Object.keys(data || {});
+  const hasDisallowed = providedKeys.some((k) => !allowedKeys.includes(k));
+  if (hasDisallowed) {
+    const error = new Error('Admin can only update plan price');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (data.price === undefined) {
+    const error = new Error('Price is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  plan.price = data.price;
 
   await plan.save();
 
-  return plan;
+  return subscriptionPolicy.attachPolicyToPlan(plan);
 };
 
 /**
@@ -55,6 +66,8 @@ const updatePlan = async (id, data) => {
  * @returns {Promise<Object>} Updated user
  */
 const assignToDoctor = async (doctorId, planId) => {
+  await subscriptionPolicy.ensureFixedPlansExist();
+
   const user = await User.findById(doctorId);
   
   if (!user) {
@@ -71,8 +84,17 @@ const assignToDoctor = async (doctorId, planId) => {
     throw new Error('Subscription plan not found');
   }
 
-  if (!plan.isActive) {
-    throw new Error('Subscription plan is not active');
+  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name);
+  if (!subscriptionPolicy.FIXED_PLAN_NAMES.includes(normalizedName)) {
+    const error = new Error('Invalid subscription plan');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (plan.status !== 'ACTIVE') {
+    const error = new Error('Subscription plan is not active');
+    error.statusCode = 403;
+    throw error;
   }
 
   // Update user subscription
@@ -97,15 +119,20 @@ const assignToDoctor = async (doctorId, planId) => {
  * @returns {Promise<Array>} List of plans
  */
 const listPlans = async (filter = {}) => {
+  await subscriptionPolicy.ensureFixedPlansExist();
+
   const { isActive } = filter;
-  
-  const query = {};
+
+  const query = {
+    name: { $in: subscriptionPolicy.FIXED_PLAN_NAMES }
+  };
+
   if (isActive !== undefined) {
-    query.isActive = isActive === true || isActive === 'true';
+    query.status = (isActive === true || isActive === 'true') ? 'ACTIVE' : 'INACTIVE';
   }
 
   const plans = await SubscriptionPlan.find(query).sort({ price: 1 });
-  return plans;
+  return plans.map(subscriptionPolicy.attachPolicyToPlan);
 };
 
 module.exports = {

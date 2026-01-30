@@ -16,13 +16,11 @@ const subscriptionPlanCreateValidator = z.object({
  * Update subscription plan validator
  */
 const subscriptionPlanUpdateValidator = z.object({
-  body: z.object({
-    name: z.string().min(1).optional(),
-    price: z.number().nonnegative("Price must be non-negative").optional(),
-    durationInDays: z.number().int().positive("Duration must be a positive integer").optional(),
-    features: z.array(z.string()).optional(),
-    status: z.enum(["ACTIVE", "INACTIVE"]).optional()
-  }),
+  body: z
+    .object({
+      price: z.number().nonnegative("Price must be non-negative")
+    })
+    .strict(),
   params: z.object({
     id: z.string().min(1, "Subscription plan ID is required")
   })

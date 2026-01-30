@@ -2,6 +2,7 @@ const Appointment = require('../models/appointment.model');
 const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
 const balanceService = require('./balance.service');
+ const subscriptionPolicy = require('./subscriptionPolicy.service');
 
 /**
  * Create appointment
@@ -54,6 +55,11 @@ const createAppointment = async (data) => {
   if (!hasActiveSubscription) {
     throw new Error('Doctor does not have an active subscription. Please select another doctor.');
   }
+
+  await subscriptionPolicy.enforceAppointmentBookingLimit({
+    doctorId,
+    bookingType: bookingType || 'VISIT'
+  });
 
   // Check if doctor profile is completed
   if (doctor.doctorProfile && !doctor.doctorProfile.profileCompleted) {

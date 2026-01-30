@@ -5,8 +5,8 @@ const { z } = require("zod");
  */
 const createSubscriptionPlanValidator = z.object({
   body: z.object({
-    name: z.enum(["BASIC", "MEDIUM", "FULL"], {
-      errorMap: () => ({ message: "Plan name must be BASIC, MEDIUM, or FULL" })
+    name: z.enum(["BASIC", "PRO", "PREMIUM"], {
+      errorMap: () => ({ message: "Plan name must be BASIC, PRO, or PREMIUM" })
     }),
     price: z.number().nonnegative("Price must be non-negative"),
     durationInDays: z.number().int().positive("Duration must be a positive integer"),
@@ -19,13 +19,11 @@ const createSubscriptionPlanValidator = z.object({
  * Update subscription plan validator
  */
 const updateSubscriptionPlanValidator = z.object({
-  body: z.object({
-    name: z.enum(["BASIC", "MEDIUM", "FULL"]).optional(),
-    price: z.number().nonnegative("Price must be non-negative").optional(),
-    durationInDays: z.number().int().positive("Duration must be a positive integer").optional(),
-    features: z.array(z.string()).optional(),
-    isActive: z.boolean().optional()
-  }),
+  body: z
+    .object({
+      price: z.number().nonnegative("Price must be non-negative")
+    })
+    .strict(),
   params: z.object({
     id: z.string().min(1, "Subscription plan ID is required")
   })

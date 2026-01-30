@@ -4,6 +4,7 @@ const User = require('../models/user.model');
 const Appointment = require('../models/appointment.model');
 const Notification = require('../models/notification.model');
 const { isWithinAppointmentWindow } = require('../middleware/appointmentAccess');
+ const subscriptionPolicy = require('./subscriptionPolicy.service');
 
 /**
  * Send message
@@ -327,6 +328,8 @@ const getOrCreateConversation = async (doctorId, patientId, adminId, appointment
       .populate('appointmentId', 'appointmentDate appointmentTime status');
 
     if (!conversation) {
+      await subscriptionPolicy.enforceChatStartLimit({ doctorId });
+
       conversation = await Conversation.create({
         doctorId,
         patientId,

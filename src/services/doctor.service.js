@@ -5,6 +5,7 @@ const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const Specialization = require('../models/specialization.model');
 const InsuranceCompany = require('../models/insuranceCompany.model');
 const Product = require('../models/product.model');
+ const subscriptionPolicy = require('./subscriptionPolicy.service');
 
 /**
  * Upsert doctor profile (create or update)
@@ -438,6 +439,8 @@ const buySubscriptionPlan = async (doctorId, planId) => {
  * @returns {Promise<Object>} Doctor's subscription plan info
  */
 const getMySubscriptionPlan = async (doctorId) => {
+  await subscriptionPolicy.ensureFixedPlansExist();
+
   const doctor = await User.findById(doctorId)
     .populate('subscriptionPlan', 'name price durationInDays features status');
   
@@ -449,12 +452,26 @@ const getMySubscriptionPlan = async (doctorId) => {
     throw new Error('User is not a doctor');
   }
 
-  return {
-    subscriptionPlan: doctor.subscriptionPlan,
+  const now = new Date();
+  const hasActiveSubscription = doctor.subscriptionPlan && doctor.subscriptionExpiresAt && new Date(doctor.subscriptionExpiresAt) > now;
+
+  const normalizedName = subscriptionPolicy.normalizePlanName(doctor.subscriptionPlan?.name);
+  const policy = subscriptionPolicy.getPlanPolicy(normalizedName);
+
+  const window = subscriptionPolicy.getSubscriptionWindow({
     subscriptionExpiresAt: doctor.subscriptionExpiresAt,
-    hasActiveSubscription: doctor.subscriptionPlan && 
-                          doctor.subscriptionExpiresAt && 
-                          new Date(doctor.subscriptionExpiresAt) > new Date()
+    durationInDays: doctor.subscriptionPlan?.durationInDays
+  });
+  const usage = await subscriptionPolicy.computeDoctorUsage(doctorId, window);
+  const remaining = subscriptionPolicy.computeRemaining(policy?.limits || null, usage);
+
+  return {
+    subscriptionPlan: subscriptionPolicy.attachPolicyToPlan(doctor.subscriptionPlan),
+    subscriptionExpiresAt: doctor.subscriptionExpiresAt,
+    hasActiveSubscription,
+    usage,
+    remaining,
+    window
   };
 };
 

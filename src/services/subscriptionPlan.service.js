@@ -1,31 +1,15 @@
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
+const subscriptionPolicy = require('./subscriptionPolicy.service');
 
 /**
  * Create subscription plan
  * @param {Object} data - Plan data
  * @returns {Promise<Object>} Created plan
  */
-const createPlan = async (data) => {
-  const { name, price, durationInDays, features } = data;
-
-  // Check if plan with same name already exists
-  const existingPlan = await SubscriptionPlan.findOne({ 
-    name: { $regex: new RegExp(`^${name}$`, 'i') }
-  });
-  
-  if (existingPlan) {
-    throw new Error('Subscription plan with this name already exists');
-  }
-
-  const plan = await SubscriptionPlan.create({
-    name,
-    price,
-    durationInDays,
-    features: features || [],
-    status: 'ACTIVE'
-  });
-
-  return plan;
+const createPlan = async () => {
+  const error = new Error('Subscription plans are fixed. Admin can only update plan prices.');
+  error.statusCode = 403;
+  throw error;
 };
 
 /**
@@ -34,14 +18,18 @@ const createPlan = async (data) => {
  * @returns {Promise<Array>} List of subscription plans
  */
 const getAllPlans = async (filter = {}) => {
-  const query = {};
-  
+  await subscriptionPolicy.ensureFixedPlansExist();
+
+  const query = {
+    name: { $in: subscriptionPolicy.FIXED_PLAN_NAMES }
+  };
+
   if (filter.status) {
     query.status = filter.status.toUpperCase();
   }
 
-  const plans = await SubscriptionPlan.find(query).sort({ createdAt: -1 });
-  return plans;
+  const plans = await SubscriptionPlan.find(query).sort({ price: 1 });
+  return plans.map(subscriptionPolicy.attachPolicyToPlan);
 };
 
 /**
@@ -49,9 +37,14 @@ const getAllPlans = async (filter = {}) => {
  * @returns {Promise<Array>} List of active subscription plans
  */
 const getActivePlans = async () => {
-  const plans = await SubscriptionPlan.find({ status: 'ACTIVE' })
-    .sort({ price: 1 });
-  return plans;
+  await subscriptionPolicy.ensureFixedPlansExist();
+
+  const plans = await SubscriptionPlan.find({
+    name: { $in: subscriptionPolicy.FIXED_PLAN_NAMES },
+    status: 'ACTIVE'
+  }).sort({ price: 1 });
+
+  return plans.map(subscriptionPolicy.attachPolicyToPlan);
 };
 
 /**
@@ -60,13 +53,24 @@ const getActivePlans = async () => {
  * @returns {Promise<Object>} Subscription plan
  */
 const getPlanById = async (id) => {
+  await subscriptionPolicy.ensureFixedPlansExist();
+
   const plan = await SubscriptionPlan.findById(id);
-  
+ 
   if (!plan) {
-    throw new Error('Subscription plan not found');
+    const error = new Error('Subscription plan not found');
+    error.statusCode = 404;
+    throw error;
   }
 
-  return plan;
+  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name);
+  if (!subscriptionPolicy.FIXED_PLAN_NAMES.includes(normalizedName)) {
+    const error = new Error('Subscription plan not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return subscriptionPolicy.attachPolicyToPlan(plan);
 };
 
 /**
@@ -76,45 +80,42 @@ const getPlanById = async (id) => {
  * @returns {Promise<Object>} Updated subscription plan
  */
 const updatePlan = async (id, data) => {
+  await subscriptionPolicy.ensureFixedPlansExist();
+
   const plan = await SubscriptionPlan.findById(id);
-  
+ 
   if (!plan) {
-    throw new Error('Subscription plan not found');
+    const error = new Error('Subscription plan not found');
+    error.statusCode = 404;
+    throw error;
   }
 
-  const { name, price, durationInDays, features, status } = data;
-
-  if (name) {
-    // Check if another plan with same name exists
-    const existingPlan = await SubscriptionPlan.findOne({ 
-      name: { $regex: new RegExp(`^${name}$`, 'i') },
-      _id: { $ne: id }
-    });
-    if (existingPlan) {
-      throw new Error('Subscription plan with this name already exists');
-    }
-    plan.name = name;
+  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name);
+  if (!subscriptionPolicy.FIXED_PLAN_NAMES.includes(normalizedName)) {
+    const error = new Error('Subscription plan not found');
+    error.statusCode = 404;
+    throw error;
   }
 
-  if (price !== undefined) {
-    plan.price = price;
+  const allowedKeys = ['price'];
+  const providedKeys = Object.keys(data || {});
+  const hasDisallowed = providedKeys.some((k) => !allowedKeys.includes(k));
+  if (hasDisallowed) {
+    const error = new Error('Admin can only update plan price');
+    error.statusCode = 403;
+    throw error;
   }
 
-  if (durationInDays !== undefined) {
-    plan.durationInDays = durationInDays;
+  if (data.price === undefined) {
+    const error = new Error('Price is required');
+    error.statusCode = 400;
+    throw error;
   }
 
-  if (features !== undefined) {
-    plan.features = features;
-  }
-
-  if (status) {
-    plan.status = status.toUpperCase();
-  }
-
+  plan.price = data.price;
   await plan.save();
 
-  return plan;
+  return subscriptionPolicy.attachPolicyToPlan(plan);
 };
 
 /**
@@ -122,65 +123,19 @@ const updatePlan = async (id, data) => {
  * @param {string} id - Plan ID
  * @returns {Promise<Object>} Success message
  */
-const deletePlan = async (id) => {
-  const plan = await SubscriptionPlan.findById(id);
-  
-  if (!plan) {
-    throw new Error('Subscription plan not found');
-  }
-
-  await SubscriptionPlan.findByIdAndDelete(id);
-
-  return { message: 'Subscription plan deleted successfully' };
-};
-
-/**
- * Get plan features by plan name
- * @param {string} planName - Plan name (BASE, PRO, PREMIUM)
- * @returns {Array<string>} Array of feature constants
- */
-const getPlanFeatures = (planName) => {
-  const upperName = planName.toUpperCase();
-  return PLAN_FEATURES[upperName] || [];
-};
-
-/**
- * Create plan with auto-populated features based on plan name
- * @param {Object} data - Plan data
- * @returns {Promise<Object>} Created plan
- */
-const createPlanWithFeatures = async (data) => {
-  const { name, price, durationInDays } = data;
-  
-  // Auto-populate features if not provided
-  let features = data.features;
-  if (!features || features.length === 0) {
-    features = getPlanFeatures(name);
-  }
-  
-  return createPlan({
-    name,
-    price,
-    durationInDays,
-    features
-  });
+const deletePlan = async () => {
+  const error = new Error('Subscription plans are fixed and cannot be deleted');
+  error.statusCode = 403;
+  throw error;
 };
 
 module.exports = {
   createPlan,
-  createPlanWithFeatures,
   getAllPlans,
   getActivePlans,
   getPlanById,
   updatePlan,
-  deletePlan,
-  getPlanFeatures
+  deletePlan
 };
-
-
-
-
-
-
 
 

@@ -1,6 +1,7 @@
 const Product = require('../models/product.model');
 const User = require('../models/user.model');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
+ const subscriptionPolicy = require('./subscriptionPolicy.service');
 
 /**
  * Create product
@@ -53,7 +54,7 @@ const createProduct = async (data) => {
     throw new Error('Seller must be an admin');
   }
 
-  // For doctors: Check if they have FULL subscription plan
+  // For doctors: Check if they have PREMIUM subscription plan
   // Admin and Pharmacy don't need subscription check
   if (sellerType === 'DOCTOR') {
     if (!seller.subscriptionPlan) {
@@ -71,7 +72,7 @@ const createProduct = async (data) => {
       throw error;
     }
 
-    // Check if subscription plan name is "FULL"
+    // Check if subscription plan name is "PREMIUM"
     const plan = await SubscriptionPlan.findById(seller.subscriptionPlan);
     if (!plan) {
       const error = new Error('Subscription plan not found');
@@ -79,8 +80,8 @@ const createProduct = async (data) => {
       throw error;
     }
 
-    if (plan.name.toUpperCase() !== 'FULL') {
-      const error = new Error('Only doctors with FULL subscription plan can create products. Please upgrade to FULL plan.');
+    if (subscriptionPolicy.normalizePlanName(plan.name) !== 'PREMIUM') {
+      const error = new Error('Only doctors with PREMIUM subscription plan can create products. Please upgrade to PREMIUM plan.');
       error.statusCode = 403;
       throw error;
     }
@@ -130,7 +131,7 @@ const updateProduct = async (id, data, userId) => {
     throw error;
   }
 
-  // For doctors: Verify they still have FULL subscription
+  // For doctors: Verify they still have PREMIUM subscription
   // Admin and Pharmacy don't need subscription check
   if (product.sellerType === 'DOCTOR' && currentUser.role !== 'ADMIN') {
     const seller = await User.findById(product.sellerId).populate('subscriptionPlan');
@@ -149,8 +150,8 @@ const updateProduct = async (id, data, userId) => {
     }
 
     const plan = await SubscriptionPlan.findById(seller.subscriptionPlan);
-    if (!plan || plan.name.toUpperCase() !== 'FULL') {
-      const error = new Error('Only doctors with FULL subscription plan can update products');
+    if (!plan || subscriptionPolicy.normalizePlanName(plan.name) !== 'PREMIUM') {
+      const error = new Error('Only doctors with PREMIUM subscription plan can update products');
       error.statusCode = 403;
       throw error;
     }
