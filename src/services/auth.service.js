@@ -71,6 +71,33 @@ const registerUser = async (data) => {
   };
 };
 
+const approvePharmacy = async (pharmacyUserId) => {
+  const user = await User.findById(pharmacyUserId);
+
+  if (!user) {
+    throw new Error('Pharmacy user not found');
+  }
+
+  if (user.role !== 'PHARMACY') {
+    throw new Error('User is not a pharmacy');
+  }
+
+  const requiredDocTypes = ['PHARMACY_LICENSE', 'PHARMACY_DEGREE'];
+  const uploads = Array.isArray(user.documentUploads) ? user.documentUploads : [];
+  const uploadedTypes = new Set(uploads.map((d) => String(d.type || '').toUpperCase()));
+
+  const missing = requiredDocTypes.filter((t) => !uploadedTypes.has(t));
+  if (missing.length > 0) {
+    throw new Error(`Missing required pharmacy documents: ${missing.join(', ')}`);
+  }
+
+  user.isPharmacyDocumentsVerified = true;
+  user.status = 'APPROVED';
+  await user.save();
+
+  return user;
+};
+
 /**
  * Login user
  * @param {Object} data - Login credentials
@@ -146,7 +173,7 @@ const loginUser = async (data) => {
     return {
       user: userObj,
       token,
-      message: 'Your account is pending admin approval. You can complete your profile, but you cannot sell products until approved.'
+      message: 'Your pharmacy account is pending admin approval. Please upload verification documents and wait for approval.'
     };
   }
 
@@ -363,6 +390,7 @@ module.exports = {
   registerUser,
   loginUser,
   approveDoctor,
+  approvePharmacy,
   changePassword,
   refreshToken,
   requestPasswordReset,

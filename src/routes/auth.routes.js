@@ -5,6 +5,7 @@ const {
   registerValidator,
   loginValidator,
   adminApproveDoctorValidator,
+  adminApprovePharmacyValidator,
   changePasswordValidator,
   refreshTokenValidator,
   requestPasswordResetValidator,
@@ -47,6 +48,13 @@ router.post(
   authGuard(['ADMIN']),
   validate(adminApproveDoctorValidator),
   asyncHandler(authController.approveDoctor)
+);
+
+router.post(
+  '/approve-pharmacy',
+  authGuard(['ADMIN']),
+  validate(adminApprovePharmacyValidator),
+  asyncHandler(authController.approvePharmacy)
 );
 
 /**

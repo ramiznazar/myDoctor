@@ -53,6 +53,21 @@ exports.create = asyncHandler(async (req, res) => {
         message: 'Please create your pharmacy profile first before adding products'
       });
     }
+
+    const isProfileComplete = !!(
+      myPharmacy.name &&
+      myPharmacy.phone &&
+      myPharmacy.address &&
+      myPharmacy.address.line1 &&
+      myPharmacy.address.city
+    );
+
+    if (!isProfileComplete) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please complete your pharmacy profile first before adding products'
+      });
+    }
   }
   // If admin provides pharmacyId, link product to that pharmacy
   else if (req.userRole === 'ADMIN' && pharmacyId) {

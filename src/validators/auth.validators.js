@@ -38,6 +38,12 @@ const adminApproveDoctorValidator = z.object({
   })
 });
 
+const adminApprovePharmacyValidator = z.object({
+  body: z.object({
+    pharmacyUserId: z.string().min(1, 'Pharmacy user ID is required')
+  })
+});
+
 /**
  * Change password validator
  */
@@ -91,6 +97,7 @@ module.exports = {
   registerValidator,
   loginValidator,
   adminApproveDoctorValidator,
+  adminApprovePharmacyValidator,
   changePasswordValidator,
   refreshTokenValidator,
   requestPasswordResetValidator,

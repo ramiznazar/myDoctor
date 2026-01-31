@@ -66,6 +66,10 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isPharmacyDocumentsVerified: {
+    type: Boolean,
+    default: false
+  },
   documentUploads: {
     type: [
       {

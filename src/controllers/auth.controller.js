@@ -34,6 +34,14 @@ exports.approveDoctor = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Approve pharmacy (admin only)
+ */
+exports.approvePharmacy = asyncHandler(async (req, res) => {
+  const result = await authService.approvePharmacy(req.body.pharmacyUserId);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+/**
  * Change password
  */
 exports.changePassword = asyncHandler(async (req, res) => {

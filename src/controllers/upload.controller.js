@@ -51,14 +51,21 @@ exports.uploadMultipleFiles = asyncHandler(async (req, res) => {
                              req.baseUrl?.includes('doctor-docs') ||
                              req.url?.includes('doctor-docs');
 
-  if (isDoctorDocsUpload && req.userId) {
+  const isPharmacyDocsUpload = req.originalUrl?.includes('/pharmacy-docs') ||
+                               req.path?.includes('pharmacy-docs') ||
+                               req.baseUrl?.includes('pharmacy-docs') ||
+                               req.url?.includes('pharmacy-docs');
+
+  const docType = (req.body?.docType || req.query?.type || 'VERIFICATION_DOCUMENT');
+
+  if ((isDoctorDocsUpload || isPharmacyDocsUpload) && req.userId) {
     try {
       const user = await User.findById(req.userId);
-      if (user && user.role === 'DOCTOR') {
+      if (user && ((isDoctorDocsUpload && user.role === 'DOCTOR') || (isPharmacyDocsUpload && user.role === 'PHARMACY'))) {
         // Create document uploads array
         const documentUploads = urls.map(url => ({
           fileUrl: url,
-          type: 'VERIFICATION_DOCUMENT' // Default type for verification documents
+          type: docType
         }));
 
         // Update user's documentUploads field

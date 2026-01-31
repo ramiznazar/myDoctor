@@ -29,6 +29,13 @@ router.post(
   asyncHandler(uploadController.uploadMultipleFiles)
 );
 
+router.post(
+  '/pharmacy-docs',
+  authGuard(['PHARMACY']),
+  uploadMultipleChatFiles('pharmacyDocs', 10),
+  asyncHandler(uploadController.uploadMultipleFiles)
+);
+
 /**
  * @route   POST /api/upload/clinic
  * @desc    Upload clinic images
