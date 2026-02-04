@@ -244,7 +244,7 @@ const requestWithdrawal = async (userId, amount, paymentDetails = {}) => {
  */
 const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null) => {
   const request = await WithdrawalRequest.findById(requestId)
-    .populate('userId', 'balance fullName email');
+    .populate('userId', 'balance fullName email role');
   
   if (!request) {
     throw new Error('Withdrawal request not found');
@@ -266,7 +266,10 @@ const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null
 
   // Calculate fee and totals
   // Fee is deducted FROM the withdrawal amount, not added to it
-  const feePercent = withdrawalFeePercent !== null ? withdrawalFeePercent : 0;
+  const userRole = String(user?.role || '').toUpperCase();
+  const feePercent = userRole === 'PHARMACY'
+    ? 0
+    : (withdrawalFeePercent !== null ? withdrawalFeePercent : 0);
   const withdrawalFeeAmount = (withdrawalAmount * feePercent) / 100;
   const netAmount = withdrawalAmount - withdrawalFeeAmount; // Doctor receives withdrawal amount minus fee
   const totalDeducted = withdrawalAmount; // Total deducted from balance is the original withdrawal amount (fee is included)
