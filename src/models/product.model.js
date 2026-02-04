@@ -8,7 +8,7 @@ const productSchema = new mongoose.Schema({
   },
   sellerType: {
     type: String,
-    enum: ["DOCTOR", "PHARMACY", "ADMIN"],
+    enum: ["DOCTOR", "PHARMACY", "PARAPHARMACY", "ADMIN"],
     default: null
   },
   name: {

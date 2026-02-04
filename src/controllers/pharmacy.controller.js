@@ -8,7 +8,7 @@ const pharmacyService = require('../services/pharmacy.service');
 exports.create = asyncHandler(async (req, res) => {
   let pharmacyData = { ...req.body };
   
-  if (req.userRole === 'PHARMACY') {
+  if (req.userRole === 'PHARMACY' || req.userRole === 'PARAPHARMACY') {
     pharmacyData.ownerId = req.userId;
   } else if (req.userRole === 'ADMIN') {
     if (!pharmacyData.ownerId) {
@@ -38,7 +38,7 @@ exports.getMyPharmacy = asyncHandler(async (req, res) => {
  */
 exports.update = asyncHandler(async (req, res) => {
   // If user is a pharmacy (not admin), verify they own this pharmacy
-  if (req.userRole === 'PHARMACY') {
+  if (req.userRole === 'PHARMACY' || req.userRole === 'PARAPHARMACY') {
     // Get pharmacy without populating to check ownerId directly
     const Pharmacy = require('../models/pharmacy.model');
     const pharmacy = await Pharmacy.findById(req.params.id);

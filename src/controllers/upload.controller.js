@@ -61,7 +61,11 @@ exports.uploadMultipleFiles = asyncHandler(async (req, res) => {
   if ((isDoctorDocsUpload || isPharmacyDocsUpload) && req.userId) {
     try {
       const user = await User.findById(req.userId);
-      if (user && ((isDoctorDocsUpload && user.role === 'DOCTOR') || (isPharmacyDocsUpload && user.role === 'PHARMACY'))) {
+      if (
+        user &&
+        ((isDoctorDocsUpload && user.role === 'DOCTOR') ||
+          (isPharmacyDocsUpload && (user.role === 'PHARMACY' || user.role === 'PARAPHARMACY')))
+      ) {
         // Create document uploads array
         const documentUploads = urls.map(url => ({
           fileUrl: url,

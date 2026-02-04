@@ -6,6 +6,11 @@ const pharmacySchema = new mongoose.Schema({
     ref: "User",
     default: null
   },
+  kind: {
+    type: String,
+    enum: ['PHARMACY', 'PARAPHARMACY'],
+    default: 'PHARMACY'
+  },
   name: {
     type: String,
     default: null

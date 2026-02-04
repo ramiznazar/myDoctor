@@ -7,7 +7,7 @@ const { z } = require("zod");
 const createProductValidator = z.object({
   body: z.object({
     sellerId: z.string().min(1).optional(), // Auto-set from req.userId
-    sellerType: z.enum(["DOCTOR", "PHARMACY", "ADMIN"]).optional(), // Auto-set from req.userRole
+    sellerType: z.enum(["DOCTOR", "PHARMACY", "PARAPHARMACY", "ADMIN"]).optional(), // Auto-set from req.userRole
     pharmacyId: z.string().min(1).optional(), // Optional - used to link product to pharmacy (for admin/doctor)
     name: z.string().min(1, "Product name is required"),
     price: z.number().nonnegative("Price must be non-negative"),
@@ -62,7 +62,7 @@ const updateProductValidator = z.object({
 const filterProductsValidator = z.object({
   query: z.object({
     sellerId: z.string().optional(),
-    sellerType: z.enum(["DOCTOR", "PHARMACY", "ADMIN"]).optional(),
+    sellerType: z.enum(["DOCTOR", "PHARMACY", "PARAPHARMACY", "ADMIN"]).optional(),
     category: z.string().optional(),
     subCategory: z.string().optional(),
     isActive: z.string().transform((val) => val === "true").optional(),

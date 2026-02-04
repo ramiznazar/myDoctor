@@ -50,6 +50,10 @@ const createProduct = async (data) => {
     throw new Error('Seller must be a pharmacy');
   }
 
+  if (sellerType === 'PARAPHARMACY' && seller.role !== 'PARAPHARMACY') {
+    throw new Error('Seller must be a parapharmacy');
+  }
+
   if (sellerType === 'ADMIN' && seller.role !== 'ADMIN') {
     throw new Error('Seller must be an admin');
   }

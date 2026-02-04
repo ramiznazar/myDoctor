@@ -17,7 +17,7 @@ const asyncHandler = require('../middleware/asyncHandler');
  */
 router.post(
   '/',
-  authGuard(['PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'PARAPHARMACY', 'ADMIN']),
   validate(createProductValidator),
   asyncHandler(productController.create)
 );
@@ -29,7 +29,7 @@ router.post(
  */
 router.put(
   '/:id',
-  authGuard(['PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'PARAPHARMACY', 'ADMIN']),
   validate(updateProductValidator),
   asyncHandler(productController.update)
 );
@@ -62,7 +62,7 @@ router.get(
  */
 router.delete(
   '/:id',
-  authGuard(['PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'PARAPHARMACY', 'ADMIN']),
   asyncHandler(productController.delete)
 );
 

@@ -8,8 +8,8 @@ const registerValidator = z.object({
     fullName: z.string().min(2, "Full name must be at least 2 characters"),
     email: z.string().email("Invalid email format"),
     password: z.string().min(6, "Password must be at least 6 characters"),
-    role: z.enum(["DOCTOR", "PATIENT", "PHARMACY"], {
-      errorMap: () => ({ message: "Role must be either DOCTOR, PATIENT or PHARMACY" })
+    role: z.enum(["DOCTOR", "PATIENT", "PHARMACY", "PARAPHARMACY"], {
+      errorMap: () => ({ message: "Role must be either DOCTOR, PATIENT, PHARMACY or PARAPHARMACY" })
     }),
     phone: z.string().optional(),
     gender: z.enum(["MALE", "FEMALE", "OTHER"]).optional(),

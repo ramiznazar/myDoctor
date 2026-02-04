@@ -9,7 +9,7 @@ const subscriptionPolicy = require('./subscriptionPolicy.service');
  * @returns {Promise<Object>} Created pharmacy
  */
 const createPharmacy = async (data) => {
-  const { ownerId, name, logo, address, phone, location, isActive } = data;
+  const { ownerId, name, logo, address, phone, location, isActive, kind } = data;
 
   // Verify owner exists
   const owner = await User.findById(ownerId);
@@ -17,8 +17,16 @@ const createPharmacy = async (data) => {
     throw new Error('Owner not found');
   }
 
+  const normalizedOwnerRole = String(owner.role || '').toUpperCase();
+  const normalizedKind = String(kind || '').toUpperCase();
+  const derivedKind = normalizedOwnerRole === 'PARAPHARMACY' ? 'PARAPHARMACY' : 'PHARMACY';
+  const finalKind = (normalizedKind === 'PARAPHARMACY' || normalizedKind === 'PHARMACY')
+    ? normalizedKind
+    : derivedKind;
+
   const pharmacy = await Pharmacy.create({
     ownerId,
+    kind: finalKind,
     name,
     logo,
     address: address || {},
@@ -97,7 +105,11 @@ const getPharmacy = async (id) => {
   const owner = pharmacy.ownerId;
   const ownerRole = typeof owner === 'object' ? owner.role : null;
   const ownerStatus = typeof owner === 'object' ? owner.status : null;
-  if (ownerRole !== 'PHARMACY' || ownerStatus !== 'APPROVED') {
+  const normalizedRole = String(ownerRole || '').toUpperCase();
+  const normalizedKind = String(pharmacy.kind || '').toUpperCase();
+  const roleMatchesKind = (normalizedRole === 'PHARMACY' && normalizedKind !== 'PARAPHARMACY')
+    || (normalizedRole === 'PARAPHARMACY' && normalizedKind === 'PARAPHARMACY');
+  if (!roleMatchesKind || ownerStatus !== 'APPROVED') {
     throw new Error('Pharmacy not found');
   }
 
@@ -120,7 +132,11 @@ const getPharmacyByOwnerId = async (ownerId) => {
   const owner = pharmacy.ownerId;
   const ownerRole = typeof owner === 'object' ? owner.role : null;
   const ownerStatus = typeof owner === 'object' ? owner.status : null;
-  if (ownerRole !== 'PHARMACY' || ownerStatus !== 'APPROVED') {
+  const normalizedRole = String(ownerRole || '').toUpperCase();
+  const normalizedKind = String(pharmacy.kind || '').toUpperCase();
+  const roleMatchesKind = (normalizedRole === 'PHARMACY' && normalizedKind !== 'PARAPHARMACY')
+    || (normalizedRole === 'PARAPHARMACY' && normalizedKind === 'PARAPHARMACY');
+  if (!roleMatchesKind || ownerStatus !== 'APPROVED') {
     return null;
   }
   
@@ -137,15 +153,24 @@ const listPharmacies = async (filter = {}) => {
     ownerId,
     city,
     search,
+    kind,
     page = 1,
     limit = 10
   } = filter;
 
   const query = { isActive: true };
 
+  const normalizedKind = String(kind || 'PHARMACY').toUpperCase();
+  if (normalizedKind === 'PARAPHARMACY') {
+    query.kind = 'PARAPHARMACY';
+  } else {
+    query.kind = { $ne: 'PARAPHARMACY' };
+  }
+
   // Only pharmacies owned by APPROVED PHARMACY users are visible publicly.
   // Apply this constraint even when filters are used.
-  const approvedPharmacyUsers = await User.find({ role: 'PHARMACY', status: 'APPROVED' }).select('_id');
+  const desiredOwnerRole = normalizedKind === 'PARAPHARMACY' ? 'PARAPHARMACY' : 'PHARMACY';
+  const approvedPharmacyUsers = await User.find({ role: desiredOwnerRole, status: 'APPROVED' }).select('_id');
   const approvedPharmacyUserIds = approvedPharmacyUsers.map(u => u._id);
   query.ownerId = { $in: approvedPharmacyUserIds };
 

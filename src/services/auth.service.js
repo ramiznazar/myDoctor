@@ -78,7 +78,7 @@ const approvePharmacy = async (pharmacyUserId) => {
     throw new Error('Pharmacy user not found');
   }
 
-  if (user.role !== 'PHARMACY') {
+  if (user.role !== 'PHARMACY' && user.role !== 'PARAPHARMACY') {
     throw new Error('User is not a pharmacy');
   }
 
@@ -160,7 +160,7 @@ const loginUser = async (data) => {
     };
   }
 
-  if (user.role === 'PHARMACY' && user.status === 'PENDING') {
+  if ((user.role === 'PHARMACY' || user.role === 'PARAPHARMACY') && user.status === 'PENDING') {
     const token = generateToken({
       userId: user._id.toString(),
       email: user.email,

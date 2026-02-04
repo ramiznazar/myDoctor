@@ -33,12 +33,12 @@ router.post(
  */
 router.get(
   '/',
-  authGuard(['PATIENT', 'PHARMACY']),
+  authGuard(['PATIENT', 'PHARMACY', 'PARAPHARMACY']),
   validate(filterOrdersValidator),
   asyncHandler(async (req, res) => {
     if (req.userRole === 'PATIENT') {
       return orderController.getPatientOrders(req, res);
-    } else if (req.userRole === 'PHARMACY') {
+    } else if (req.userRole === 'PHARMACY' || req.userRole === 'PARAPHARMACY') {
       return orderController.getPharmacyOrders(req, res);
     }
   })
@@ -51,7 +51,7 @@ router.get(
  */
 router.get(
   '/:id',
-  authGuard(['PATIENT', 'PHARMACY', 'ADMIN']),
+  authGuard(['PATIENT', 'PHARMACY', 'PARAPHARMACY', 'ADMIN']),
   validate(getOrderByIdValidator),
   asyncHandler(orderController.getById)
 );
@@ -63,7 +63,7 @@ router.get(
  */
 router.put(
   '/:id/status',
-  authGuard(['PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'PARAPHARMACY', 'ADMIN']),
   validate(updateOrderStatusValidator),
   asyncHandler(orderController.updateStatus)
 );
@@ -75,7 +75,7 @@ router.put(
  */
 router.put(
   '/:id/shipping',
-  authGuard(['PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'PARAPHARMACY', 'ADMIN']),
   validate(updateShippingFeeValidator),
   asyncHandler(orderController.updateShippingFee)
 );
@@ -99,7 +99,7 @@ router.post(
  */
 router.post(
   '/:id/cancel',
-  authGuard(['PATIENT', 'PHARMACY', 'ADMIN']),
+  authGuard(['PATIENT', 'PHARMACY', 'PARAPHARMACY', 'ADMIN']),
   validate(cancelOrderValidator),
   asyncHandler(orderController.cancel)
 );
@@ -111,7 +111,7 @@ router.post(
  */
 router.get(
   '/pharmacy/orders',
-  authGuard(['PHARMACY']),
+  authGuard(['PHARMACY', 'PARAPHARMACY']),
   validate(filterOrdersValidator),
   asyncHandler(orderController.getPharmacyOrders)
 );

@@ -33,7 +33,7 @@ router.post(
  */
 router.post(
   '/withdraw/request',
-  authGuard(['DOCTOR', 'PATIENT', 'PHARMACY']),
+  authGuard(['DOCTOR', 'PATIENT', 'PHARMACY', 'PARAPHARMACY']),
   asyncHandler(balanceController.requestWithdrawal)
 );
 

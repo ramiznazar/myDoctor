@@ -12,7 +12,7 @@ const asyncHandler = require('../middleware/asyncHandler');
  */
 router.post(
   '/profile',
-  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT', 'PHARMACY', 'PARAPHARMACY']),
   uploadSingleImage('profile'),
   asyncHandler(uploadController.uploadSingleFile)
 );
@@ -31,7 +31,7 @@ router.post(
 
 router.post(
   '/pharmacy-docs',
-  authGuard(['PHARMACY']),
+  authGuard(['PHARMACY', 'PARAPHARMACY']),
   uploadMultipleChatFiles('pharmacyDocs', 10),
   asyncHandler(uploadController.uploadMultipleFiles)
 );
@@ -55,7 +55,7 @@ router.post(
  */
 router.post(
   '/product',
-  authGuard(['ADMIN', 'PHARMACY']),
+  authGuard(['ADMIN', 'PHARMACY', 'PARAPHARMACY']),
   uploadMultipleImages('product', 10),
   asyncHandler(uploadController.uploadMultipleFiles)
 );
@@ -79,7 +79,7 @@ router.post(
  */
 router.post(
   '/pharmacy',
-  authGuard(['PHARMACY', 'ADMIN']),
+  authGuard(['PHARMACY', 'PARAPHARMACY', 'ADMIN']),
   uploadSingleImage('pharmacy'),
   asyncHandler(uploadController.uploadSingleFile)
 );
@@ -91,7 +91,7 @@ router.post(
  */
 router.post(
   '/general',
-  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT', 'PHARMACY', 'PARAPHARMACY']),
   uploadSingleImage('general'),
   asyncHandler(uploadController.uploadSingleFile)
 );

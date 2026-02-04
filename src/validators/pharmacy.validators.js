@@ -7,6 +7,7 @@ const { z } = require("zod");
 const createPharmacyValidator = z.object({
   body: z.object({
     ownerId: z.string().min(1).optional(), // Optional - auto-set by backend
+    kind: z.enum(['PHARMACY', 'PARAPHARMACY']).optional(),
     name: z.string().min(1, "Pharmacy name is required"),
     logo: z.union([
       z.string().url("Invalid logo URL"),
@@ -59,8 +60,13 @@ const buySubscriptionPlanValidator = z.object({
 const updatePharmacyValidator = z.object({
   body: z.object({
     ownerId: z.string().min(1).optional(),
+    kind: z.enum(['PHARMACY', 'PARAPHARMACY']).optional(),
     name: z.string().min(1).optional(),
-    logo: z.string().url("Invalid logo URL").optional(),
+    logo: z.union([
+      z.string().url("Invalid logo URL"),
+      z.string().regex(/^\/uploads\//, "Logo must be a valid URL or upload path"),
+      z.literal("")
+    ]).optional().transform((val) => val === "" ? undefined : val),
     address: z.object({
       line1: z.string().optional(),
       line2: z.string().optional(),

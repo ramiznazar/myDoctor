@@ -38,7 +38,7 @@ exports.create = asyncHandler(async (req, res) => {
   });
   
   // If pharmacy creates product, require approval and pharmacy profile exists
-  if (req.userRole === 'PHARMACY') {
+  if (req.userRole === 'PHARMACY' || req.userRole === 'PARAPHARMACY') {
     const status = req.user?.status?.toUpperCase();
     if (status !== 'APPROVED') {
       return res.status(403).json({
@@ -70,7 +70,9 @@ exports.create = asyncHandler(async (req, res) => {
       });
     }
 
-    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+    if (req.userRole === 'PHARMACY') {
+      await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+    }
   }
   // If admin provides pharmacyId, link product to that pharmacy
   else if (req.userRole === 'ADMIN' && pharmacyId) {
@@ -94,7 +96,8 @@ exports.create = asyncHandler(async (req, res) => {
       
       // Get the pharmacy owner's ID (handle both populated object and direct ID)
       sellerId = pharmacy.ownerId?._id || pharmacy.ownerId;
-      sellerType = 'PHARMACY';
+      const pharmacyKind = String(pharmacy.kind || '').toUpperCase();
+      sellerType = pharmacyKind === 'PARAPHARMACY' ? 'PARAPHARMACY' : 'PHARMACY';
       
       console.log('After setting sellerId and sellerType:', {
         sellerId: sellerId,

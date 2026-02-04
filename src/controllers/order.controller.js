@@ -39,7 +39,7 @@ exports.getPatientOrders = asyncHandler(async (req, res) => {
  * Get pharmacy orders (for pharmacy owner/doctor)
  */
 exports.getPharmacyOrders = asyncHandler(async (req, res) => {
-  if (req.userRole === 'PHARMACY') {
+  if (req.userRole === 'PHARMACY' || req.userRole === 'PARAPHARMACY') {
     const status = req.user?.status?.toUpperCase();
     if (status !== 'APPROVED') {
       return res.status(403).json({
@@ -48,8 +48,10 @@ exports.getPharmacyOrders = asyncHandler(async (req, res) => {
       });
     }
 
-    const subscriptionPolicy = require('../services/subscriptionPolicy.service');
-    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+    if (req.userRole === 'PHARMACY') {
+      const subscriptionPolicy = require('../services/subscriptionPolicy.service');
+      await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+    }
   }
   const result = await orderService.getPharmacyOrders(req.userId, req.query);
   res.json({ success: true, message: 'OK', data: result });
@@ -67,7 +69,7 @@ exports.getAllOrders = asyncHandler(async (req, res) => {
  * Update order status
  */
 exports.updateStatus = asyncHandler(async (req, res) => {
-  if (req.userRole === 'PHARMACY') {
+  if (req.userRole === 'PHARMACY' || req.userRole === 'PARAPHARMACY') {
     const status = req.user?.status?.toUpperCase();
     if (status !== 'APPROVED') {
       return res.status(403).json({
@@ -76,8 +78,10 @@ exports.updateStatus = asyncHandler(async (req, res) => {
       });
     }
 
-    const subscriptionPolicy = require('../services/subscriptionPolicy.service');
-    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+    if (req.userRole === 'PHARMACY') {
+      const subscriptionPolicy = require('../services/subscriptionPolicy.service');
+      await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+    }
   }
   const { status } = req.body;
   const result = await orderService.updateOrderStatus(
@@ -94,7 +98,7 @@ exports.updateStatus = asyncHandler(async (req, res) => {
  * Only pharmacy owner (doctor) can update shipping fee
  */
 exports.updateShippingFee = asyncHandler(async (req, res) => {
-  if (req.userRole === 'PHARMACY') {
+  if (req.userRole === 'PHARMACY' || req.userRole === 'PARAPHARMACY') {
     const status = req.user?.status?.toUpperCase();
     if (status !== 'APPROVED') {
       return res.status(403).json({
@@ -103,8 +107,10 @@ exports.updateShippingFee = asyncHandler(async (req, res) => {
       });
     }
 
-    const subscriptionPolicy = require('../services/subscriptionPolicy.service');
-    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+    if (req.userRole === 'PHARMACY') {
+      const subscriptionPolicy = require('../services/subscriptionPolicy.service');
+      await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+    }
   }
   const { shippingFee } = req.body;
   const result = await orderService.updateShippingFee(
