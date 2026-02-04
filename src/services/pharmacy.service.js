@@ -1,5 +1,7 @@
 const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
+const SubscriptionPlan = require('../models/subscriptionPlan.model');
+const subscriptionPolicy = require('./subscriptionPolicy.service');
 
 /**
  * Create pharmacy
@@ -271,8 +273,122 @@ const deletePharmacy = async (id) => {
   return { message: 'Pharmacy deleted successfully' };
 };
 
+/**
+ * Pharmacy buys/selects a subscription plan
+ * @param {string} pharmacyUserId - Pharmacy user ID
+ * @param {string} planId - Subscription plan ID
+ * @returns {Promise<Object>} Updated pharmacy user with subscription info
+ */
+const buySubscriptionPlan = async (pharmacyUserId, planId) => {
+  await subscriptionPolicy.ensureFixedPlansExist(subscriptionPolicy.TARGET_ROLES.PHARMACY);
+
+  const pharmacyUser = await User.findById(pharmacyUserId);
+  if (!pharmacyUser) {
+    throw new Error('Pharmacy not found');
+  }
+
+  if (pharmacyUser.role !== 'PHARMACY') {
+    throw new Error('User is not a pharmacy');
+  }
+
+  const plan = await SubscriptionPlan.findById(planId);
+  if (!plan) {
+    throw new Error('Subscription plan not found');
+  }
+
+  if (String(plan.targetRole || '').toUpperCase() !== subscriptionPolicy.TARGET_ROLES.PHARMACY) {
+    const error = new Error('Invalid subscription plan for pharmacy');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name, subscriptionPolicy.TARGET_ROLES.PHARMACY);
+  const fixedNames = subscriptionPolicy.getFixedPlanNames(subscriptionPolicy.TARGET_ROLES.PHARMACY);
+  if (!fixedNames.includes(normalizedName)) {
+    const error = new Error('Invalid subscription plan for pharmacy');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (plan.status !== 'ACTIVE') {
+    const error = new Error('Subscription plan is not active');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + plan.durationInDays);
+
+  pharmacyUser.subscriptionPlan = planId;
+  pharmacyUser.subscriptionExpiresAt = endDate;
+  await pharmacyUser.save();
+
+  const Transaction = require('../models/transaction.model');
+  try {
+    await Transaction.create({
+      userId: pharmacyUserId,
+      relatedSubscriptionId: planId,
+      amount: plan.price,
+      currency: 'EUR',
+      status: 'SUCCESS',
+      provider: 'DUMMY',
+      providerReference: `PHARM-SUB-${Date.now()}-${pharmacyUserId}`
+    });
+  } catch (transactionError) {
+    console.error('Failed to create transaction record:', transactionError);
+  }
+
+  await pharmacyUser.populate('subscriptionPlan', 'name price durationInDays features status targetRole');
+
+  const userObj = pharmacyUser.toObject();
+  delete userObj.password;
+
+  return {
+    pharmacy: userObj,
+    subscriptionPlan: subscriptionPolicy.attachPolicyToPlan(pharmacyUser.subscriptionPlan, subscriptionPolicy.TARGET_ROLES.PHARMACY),
+    subscriptionExpiresAt: pharmacyUser.subscriptionExpiresAt
+  };
+};
+
+/**
+ * Get pharmacy's current subscription plan
+ * @param {string} pharmacyUserId - Pharmacy user ID
+ * @returns {Promise<Object>} Pharmacy subscription info
+ */
+const getMySubscriptionPlan = async (pharmacyUserId) => {
+  await subscriptionPolicy.ensureFixedPlansExist(subscriptionPolicy.TARGET_ROLES.PHARMACY);
+
+  const pharmacyUser = await User.findById(pharmacyUserId)
+    .populate('subscriptionPlan', 'name price durationInDays features status targetRole');
+
+  if (!pharmacyUser) {
+    throw new Error('Pharmacy not found');
+  }
+
+  if (pharmacyUser.role !== 'PHARMACY') {
+    throw new Error('User is not a pharmacy');
+  }
+
+  const now = new Date();
+  const hasActiveSubscription = pharmacyUser.subscriptionPlan && pharmacyUser.subscriptionExpiresAt && new Date(pharmacyUser.subscriptionExpiresAt) > now;
+
+  const window = subscriptionPolicy.getSubscriptionWindow({
+    subscriptionExpiresAt: pharmacyUser.subscriptionExpiresAt,
+    durationInDays: pharmacyUser.subscriptionPlan?.durationInDays
+  });
+
+  return {
+    subscriptionPlan: subscriptionPolicy.attachPolicyToPlan(pharmacyUser.subscriptionPlan, subscriptionPolicy.TARGET_ROLES.PHARMACY),
+    subscriptionExpiresAt: pharmacyUser.subscriptionExpiresAt,
+    hasActiveSubscription,
+    window
+  };
+};
+
 module.exports = {
   createPharmacy,
+  buySubscriptionPlan,
+  getMySubscriptionPlan,
   updatePharmacy,
   getPharmacy,
   getPharmacyByOwnerId,

@@ -4,61 +4,119 @@ const Appointment = require('../models/appointment.model');
 const Conversation = require('../models/conversation.model');
 const DoctorSubscription = require('../models/doctorSubscription.model');
 
-const FIXED_PLAN_NAMES = ['BASIC', 'PRO', 'PREMIUM'];
+const TARGET_ROLES = {
+  DOCTOR: 'DOCTOR',
+  PHARMACY: 'PHARMACY'
+};
 
-const FIXED_PLANS = {
-  BASIC: {
-    name: 'BASIC',
-    defaultPrice: 29,
-    durationInDays: 30,
-    limits: {
-      privateConsultations: 10,
-      videoConsultations: 5,
-      chatSessions: 15
+const FIXED_PLAN_NAMES_BY_ROLE = {
+  [TARGET_ROLES.DOCTOR]: ['BASIC', 'PRO', 'PREMIUM'],
+  [TARGET_ROLES.PHARMACY]: ['STARTER', 'PRO', 'PREMIUM']
+};
+
+const FIXED_PLANS_BY_ROLE = {
+  [TARGET_ROLES.DOCTOR]: {
+    BASIC: {
+      name: 'BASIC',
+      defaultPrice: 29,
+      durationInDays: 30,
+      limits: {
+        privateConsultations: 10,
+        videoConsultations: 5,
+        chatSessions: 15
+      },
+      crmAccess: false
     },
-    crmAccess: false
+    PRO: {
+      name: 'PRO',
+      defaultPrice: 59,
+      durationInDays: 30,
+      limits: {
+        privateConsultations: 20,
+        videoConsultations: 10,
+        chatSessions: 30
+      },
+      crmAccess: false
+    },
+    PREMIUM: {
+      name: 'PREMIUM',
+      defaultPrice: 99,
+      durationInDays: 30,
+      limits: {
+        privateConsultations: null,
+        videoConsultations: null,
+        chatSessions: null
+      },
+      crmAccess: true
+    }
   },
-  PRO: {
-    name: 'PRO',
-    defaultPrice: 59,
-    durationInDays: 30,
-    limits: {
-      privateConsultations: 20,
-      videoConsultations: 10,
-      chatSessions: 30
+  [TARGET_ROLES.PHARMACY]: {
+    STARTER: {
+      name: 'STARTER',
+      defaultPrice: 29,
+      durationInDays: 30,
+      limits: null,
+      crmAccess: false
     },
-    crmAccess: false
-  },
-  PREMIUM: {
-    name: 'PREMIUM',
-    defaultPrice: 99,
-    durationInDays: 30,
-    limits: {
-      privateConsultations: null,
-      videoConsultations: null,
-      chatSessions: null
+    PRO: {
+      name: 'PRO',
+      defaultPrice: 59,
+      durationInDays: 60,
+      limits: null,
+      crmAccess: false
     },
-    crmAccess: true
+    PREMIUM: {
+      name: 'PREMIUM',
+      defaultPrice: 89,
+      durationInDays: 150,
+      limits: null,
+      crmAccess: false
+    }
   }
 };
 
-const normalizePlanName = (planName) => {
+const FIXED_PLAN_NAMES = FIXED_PLAN_NAMES_BY_ROLE[TARGET_ROLES.DOCTOR];
+
+const getFixedPlanNames = (targetRole = TARGET_ROLES.DOCTOR) => {
+  const role = String(targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
+  return FIXED_PLAN_NAMES_BY_ROLE[role] || FIXED_PLAN_NAMES_BY_ROLE[TARGET_ROLES.DOCTOR];
+};
+
+const getPlanAliases = (targetRole = TARGET_ROLES.DOCTOR) => {
+  const role = String(targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
+  if (role === TARGET_ROLES.DOCTOR) {
+    return ['FULL', 'MEDIUM'];
+  }
+  return [];
+};
+
+const normalizePlanName = (planName, targetRole = TARGET_ROLES.DOCTOR) => {
+  const role = String(targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
   const name = (planName || '').toString().trim().toUpperCase();
 
-  if (name === 'FULL') return 'PREMIUM';
-  if (name === 'MEDIUM') return 'PRO';
+  if (role === TARGET_ROLES.DOCTOR) {
+    if (name === 'FULL') return 'PREMIUM';
+    if (name === 'MEDIUM') return 'PRO';
+  }
 
   return name;
 };
 
-const getPlanPolicy = (planName) => {
-  const normalized = normalizePlanName(planName);
-  return FIXED_PLANS[normalized] || null;
+const getPlanPolicy = (planName, targetRole = TARGET_ROLES.DOCTOR) => {
+  const role = String(targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
+  const normalized = normalizePlanName(planName, role);
+  const policies = FIXED_PLANS_BY_ROLE[role] || FIXED_PLANS_BY_ROLE[TARGET_ROLES.DOCTOR];
+  return policies[normalized] || null;
 };
 
-const getPlanFeatures = (planName) => {
-  const policy = getPlanPolicy(planName);
+const getPlanFeatures = (planName, targetRole = TARGET_ROLES.DOCTOR) => {
+  const role = String(targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
+  const policy = getPlanPolicy(planName, role);
   if (!policy) return [];
+
+  if (role === TARGET_ROLES.PHARMACY) {
+    return ['Full access'];
+  }
 
   const privateText = policy.limits.privateConsultations === null
     ? 'Private Consultation: Unlimited'
@@ -81,9 +139,10 @@ const getPlanFeatures = (planName) => {
   return features;
 };
 
-const attachPolicyToPlan = (planDoc) => {
+const attachPolicyToPlan = (planDoc, targetRole = TARGET_ROLES.DOCTOR) => {
+  const role = String(targetRole || planDoc?.targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
   const planObj = planDoc?.toObject ? planDoc.toObject() : planDoc;
-  const policy = getPlanPolicy(planObj?.name);
+  const policy = getPlanPolicy(planObj?.name, role);
 
   return {
     ...planObj,
@@ -92,15 +151,34 @@ const attachPolicyToPlan = (planDoc) => {
   };
 };
 
-const ensureFixedPlansExist = async () => {
+const ensureFixedPlansExist = async (targetRole = TARGET_ROLES.DOCTOR) => {
+  const role = String(targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
+  const fixedNames = getFixedPlanNames(role);
+  const aliases = getPlanAliases(role);
+
+  const baseQuery = {
+    name: { $in: [...fixedNames, ...aliases] }
+  };
+
+  const roleQuery = role === TARGET_ROLES.DOCTOR
+    ? {
+        $or: [
+          { targetRole: TARGET_ROLES.DOCTOR },
+          { targetRole: { $exists: false } },
+          { targetRole: null }
+        ]
+      }
+    : { targetRole: role };
+
   const existing = await SubscriptionPlan.find({
-    name: { $in: [...FIXED_PLAN_NAMES, 'FULL', 'MEDIUM'] }
+    ...baseQuery,
+    ...roleQuery
   }).sort({ createdAt: 1 });
 
   const existingByName = new Map();
 
-  for (const planName of FIXED_PLAN_NAMES) {
-    const candidates = existing.filter((p) => normalizePlanName(p.name) === planName);
+  for (const planName of fixedNames) {
+    const candidates = existing.filter((p) => normalizePlanName(p.name, role) === planName);
     if (candidates.length === 0) continue;
 
     const canonical = candidates.find((p) => p.name === planName && p.status === 'ACTIVE')
@@ -117,15 +195,23 @@ const ensureFixedPlansExist = async () => {
           { $set: { subscriptionPlan: canonical._id } }
         );
 
-        await DoctorSubscription.updateMany(
-          { planId: dup._id, status: 'ACTIVE' },
-          { $set: { planId: canonical._id } }
-        );
+        if (role === TARGET_ROLES.DOCTOR) {
+          await DoctorSubscription.updateMany(
+            { planId: dup._id, status: 'ACTIVE' },
+            { $set: { planId: canonical._id } }
+          );
+        }
 
         dup.status = 'INACTIVE';
-        dup.name = `ARCHIVED_${planName}_${dup._id.toString()}`;
+        dup.targetRole = role;
+        dup.name = `ARCHIVED_${role}_${planName}_${dup._id.toString()}`;
         await dup.save();
       }
+    }
+
+    if (!canonical.targetRole) {
+      canonical.targetRole = role;
+      await canonical.save();
     }
 
     existingByName.set(planName, canonical);
@@ -133,16 +219,17 @@ const ensureFixedPlansExist = async () => {
 
   const createdOrUpdated = [];
 
-  for (const planName of FIXED_PLAN_NAMES) {
-    const policy = FIXED_PLANS[planName];
+  for (const planName of fixedNames) {
+    const policy = FIXED_PLANS_BY_ROLE[role][planName];
     const found = existingByName.get(planName);
 
     if (!found) {
       const created = await SubscriptionPlan.create({
+        targetRole: role,
         name: policy.name,
         price: policy.defaultPrice,
         durationInDays: policy.durationInDays,
-        features: getPlanFeatures(policy.name),
+        features: getPlanFeatures(policy.name, role),
         status: 'ACTIVE'
       });
       createdOrUpdated.push(created);
@@ -150,6 +237,16 @@ const ensureFixedPlansExist = async () => {
     }
 
     let changed = false;
+
+    if (!found.targetRole) {
+      found.targetRole = role;
+      changed = true;
+    }
+
+    if (found.targetRole !== role) {
+      found.targetRole = role;
+      changed = true;
+    }
 
     if (found.name !== policy.name) {
       found.name = policy.name;
@@ -161,7 +258,7 @@ const ensureFixedPlansExist = async () => {
       changed = true;
     }
 
-    const desiredFeatures = getPlanFeatures(policy.name);
+    const desiredFeatures = getPlanFeatures(policy.name, role);
     const currentFeatures = Array.isArray(found.features) ? found.features : [];
     const featuresEqual = currentFeatures.length === desiredFeatures.length && currentFeatures.every((v, i) => v === desiredFeatures[i]);
     if (!featuresEqual) {
@@ -187,6 +284,39 @@ const ensureFixedPlansExist = async () => {
   }
 
   return createdOrUpdated;
+};
+
+const enforcePharmacySubscriptionActive = async ({ pharmacyUserId }) => {
+  await ensureFixedPlansExist(TARGET_ROLES.PHARMACY);
+
+  const pharmacyUser = await User.findById(pharmacyUserId).populate('subscriptionPlan');
+  if (!pharmacyUser || pharmacyUser.role !== TARGET_ROLES.PHARMACY) {
+    const error = new Error('Pharmacy not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const now = new Date();
+  const hasActiveSubscription = pharmacyUser.subscriptionPlan && pharmacyUser.subscriptionExpiresAt && new Date(pharmacyUser.subscriptionExpiresAt) > now;
+  if (!hasActiveSubscription) {
+    const error = new Error('Pharmacy does not have an active subscription. Please subscribe to continue.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const planTargetRole = pharmacyUser.subscriptionPlan?.targetRole;
+  if (String(planTargetRole || '').toUpperCase() !== TARGET_ROLES.PHARMACY) {
+    const error = new Error('Invalid subscription plan for pharmacy');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return {
+    pharmacyUser,
+    subscriptionPlan: attachPolicyToPlan(pharmacyUser.subscriptionPlan, TARGET_ROLES.PHARMACY),
+    subscriptionExpiresAt: pharmacyUser.subscriptionExpiresAt,
+    hasActiveSubscription
+  };
 };
 
 const getSubscriptionWindow = ({ subscriptionExpiresAt, durationInDays }) => {
@@ -258,7 +388,7 @@ const computeRemaining = (limits, usage) => {
 };
 
 const getDoctorSubscriptionContext = async (doctorId) => {
-  await ensureFixedPlansExist();
+  await ensureFixedPlansExist(TARGET_ROLES.DOCTOR);
 
   const doctor = await User.findById(doctorId).populate('subscriptionPlan');
   if (!doctor || doctor.role !== 'DOCTOR') {
@@ -269,8 +399,8 @@ const getDoctorSubscriptionContext = async (doctorId) => {
 
   const now = new Date();
   const hasActiveSubscription = doctor.subscriptionPlan && doctor.subscriptionExpiresAt && new Date(doctor.subscriptionExpiresAt) > now;
-  const planName = normalizePlanName(doctor.subscriptionPlan?.name);
-  const policy = getPlanPolicy(planName);
+  const planName = normalizePlanName(doctor.subscriptionPlan?.name, TARGET_ROLES.DOCTOR);
+  const policy = getPlanPolicy(planName, TARGET_ROLES.DOCTOR);
 
   return {
     doctor,
@@ -356,11 +486,14 @@ const enforceCrmAccess = async ({ doctorId }) => {
 
 module.exports = {
   FIXED_PLAN_NAMES,
+  TARGET_ROLES,
+  getFixedPlanNames,
   normalizePlanName,
   getPlanPolicy,
   getPlanFeatures,
   attachPolicyToPlan,
   ensureFixedPlansExist,
+  enforcePharmacySubscriptionActive,
   getSubscriptionWindow,
   computeDoctorUsage,
   computeRemaining,

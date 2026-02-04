@@ -1,6 +1,27 @@
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const subscriptionPolicy = require('./subscriptionPolicy.service');
 
+const normalizeTargetRole = (targetRole) => {
+  const role = String(targetRole || subscriptionPolicy.TARGET_ROLES.DOCTOR).toUpperCase();
+  return role === subscriptionPolicy.TARGET_ROLES.PHARMACY
+    ? subscriptionPolicy.TARGET_ROLES.PHARMACY
+    : subscriptionPolicy.TARGET_ROLES.DOCTOR;
+};
+
+const buildRoleQuery = (role) => {
+  if (role === subscriptionPolicy.TARGET_ROLES.PHARMACY) {
+    return { targetRole: subscriptionPolicy.TARGET_ROLES.PHARMACY };
+  }
+
+  return {
+    $or: [
+      { targetRole: subscriptionPolicy.TARGET_ROLES.DOCTOR },
+      { targetRole: { $exists: false } },
+      { targetRole: null }
+    ]
+  };
+};
+
 /**
  * Create subscription plan
  * @param {Object} data - Plan data
@@ -18,10 +39,12 @@ const createPlan = async () => {
  * @returns {Promise<Array>} List of subscription plans
  */
 const getAllPlans = async (filter = {}) => {
-  await subscriptionPolicy.ensureFixedPlansExist();
+  const role = normalizeTargetRole(filter.targetRole);
+  await subscriptionPolicy.ensureFixedPlansExist(role);
 
   const query = {
-    name: { $in: subscriptionPolicy.FIXED_PLAN_NAMES }
+    ...buildRoleQuery(role),
+    name: { $in: subscriptionPolicy.getFixedPlanNames(role) }
   };
 
   if (filter.status) {
@@ -29,7 +52,7 @@ const getAllPlans = async (filter = {}) => {
   }
 
   const plans = await SubscriptionPlan.find(query).sort({ price: 1 });
-  return plans.map(subscriptionPolicy.attachPolicyToPlan);
+  return plans.map((p) => subscriptionPolicy.attachPolicyToPlan(p, role));
 };
 
 /**
@@ -37,14 +60,29 @@ const getAllPlans = async (filter = {}) => {
  * @returns {Promise<Array>} List of active subscription plans
  */
 const getActivePlans = async () => {
-  await subscriptionPolicy.ensureFixedPlansExist();
+  const role = normalizeTargetRole();
+  await subscriptionPolicy.ensureFixedPlansExist(role);
 
   const plans = await SubscriptionPlan.find({
-    name: { $in: subscriptionPolicy.FIXED_PLAN_NAMES },
+    ...buildRoleQuery(role),
+    name: { $in: subscriptionPolicy.getFixedPlanNames(role) },
     status: 'ACTIVE'
   }).sort({ price: 1 });
 
-  return plans.map(subscriptionPolicy.attachPolicyToPlan);
+  return plans.map((p) => subscriptionPolicy.attachPolicyToPlan(p, role));
+};
+
+const getActivePlansByRole = async (targetRole) => {
+  const role = normalizeTargetRole(targetRole);
+  await subscriptionPolicy.ensureFixedPlansExist(role);
+
+  const plans = await SubscriptionPlan.find({
+    ...buildRoleQuery(role),
+    name: { $in: subscriptionPolicy.getFixedPlanNames(role) },
+    status: 'ACTIVE'
+  }).sort({ price: 1 });
+
+  return plans.map((p) => subscriptionPolicy.attachPolicyToPlan(p, role));
 };
 
 /**
@@ -53,7 +91,10 @@ const getActivePlans = async () => {
  * @returns {Promise<Object>} Subscription plan
  */
 const getPlanById = async (id) => {
-  await subscriptionPolicy.ensureFixedPlansExist();
+  await Promise.all([
+    subscriptionPolicy.ensureFixedPlansExist(subscriptionPolicy.TARGET_ROLES.DOCTOR),
+    subscriptionPolicy.ensureFixedPlansExist(subscriptionPolicy.TARGET_ROLES.PHARMACY)
+  ]);
 
   const plan = await SubscriptionPlan.findById(id);
  
@@ -63,14 +104,16 @@ const getPlanById = async (id) => {
     throw error;
   }
 
-  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name);
-  if (!subscriptionPolicy.FIXED_PLAN_NAMES.includes(normalizedName)) {
+  const role = normalizeTargetRole(plan.targetRole);
+  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name, role);
+  const fixedNames = subscriptionPolicy.getFixedPlanNames(role);
+  if (!fixedNames.includes(normalizedName)) {
     const error = new Error('Subscription plan not found');
     error.statusCode = 404;
     throw error;
   }
 
-  return subscriptionPolicy.attachPolicyToPlan(plan);
+  return subscriptionPolicy.attachPolicyToPlan(plan, role);
 };
 
 /**
@@ -80,7 +123,10 @@ const getPlanById = async (id) => {
  * @returns {Promise<Object>} Updated subscription plan
  */
 const updatePlan = async (id, data) => {
-  await subscriptionPolicy.ensureFixedPlansExist();
+  await Promise.all([
+    subscriptionPolicy.ensureFixedPlansExist(subscriptionPolicy.TARGET_ROLES.DOCTOR),
+    subscriptionPolicy.ensureFixedPlansExist(subscriptionPolicy.TARGET_ROLES.PHARMACY)
+  ]);
 
   const plan = await SubscriptionPlan.findById(id);
  
@@ -90,8 +136,10 @@ const updatePlan = async (id, data) => {
     throw error;
   }
 
-  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name);
-  if (!subscriptionPolicy.FIXED_PLAN_NAMES.includes(normalizedName)) {
+  const role = normalizeTargetRole(plan.targetRole);
+  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name, role);
+  const fixedNames = subscriptionPolicy.getFixedPlanNames(role);
+  if (!fixedNames.includes(normalizedName)) {
     const error = new Error('Subscription plan not found');
     error.statusCode = 404;
     throw error;
@@ -115,7 +163,7 @@ const updatePlan = async (id, data) => {
   plan.price = data.price;
   await plan.save();
 
-  return subscriptionPolicy.attachPolicyToPlan(plan);
+  return subscriptionPolicy.attachPolicyToPlan(plan, role);
 };
 
 /**
@@ -133,6 +181,7 @@ module.exports = {
   createPlan,
   getAllPlans,
   getActivePlans,
+  getActivePlansByRole,
   getPlanById,
   updatePlan,
   deletePlan

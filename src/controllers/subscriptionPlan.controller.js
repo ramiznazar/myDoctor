@@ -21,7 +21,10 @@ exports.getAllPlans = asyncHandler(async (req, res) => {
  * Get all active subscription plans (for doctors)
  */
 exports.getActivePlans = asyncHandler(async (req, res) => {
-  const result = await subscriptionPlanService.getActivePlans();
+  const targetRole = req.query?.targetRole;
+  const result = targetRole
+    ? await subscriptionPlanService.getActivePlansByRole(targetRole)
+    : await subscriptionPlanService.getActivePlans();
   res.json({ success: true, message: 'OK', data: result });
 });
 

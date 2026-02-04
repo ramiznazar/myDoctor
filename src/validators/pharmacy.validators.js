@@ -45,6 +45,15 @@ const createPharmacyValidator = z.object({
 });
 
 /**
+ * Pharmacy buy subscription plan validator
+ */
+const buySubscriptionPlanValidator = z.object({
+  body: z.object({
+    planId: z.string().min(1, "Plan ID is required")
+  })
+});
+
+/**
  * Update pharmacy validator
  */
 const updatePharmacyValidator = z.object({
@@ -74,6 +83,7 @@ const updatePharmacyValidator = z.object({
 
 module.exports = {
   createPharmacyValidator,
-  updatePharmacyValidator
+  updatePharmacyValidator,
+  buySubscriptionPlanValidator
 };
 

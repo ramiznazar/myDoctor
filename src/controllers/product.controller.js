@@ -11,6 +11,7 @@ exports.create = asyncHandler(async (req, res) => {
   let sellerId = req.userId;
   let sellerType = req.userRole;
   const pharmacyService = require('../services/pharmacy.service');
+  const subscriptionPolicy = require('../services/subscriptionPolicy.service');
   
   // Check for pharmacyId first (before removing it from body)
   // Handle both string and empty string cases
@@ -68,6 +69,8 @@ exports.create = asyncHandler(async (req, res) => {
         message: 'Please complete your pharmacy profile first before adding products'
       });
     }
+
+    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
   }
   // If admin provides pharmacyId, link product to that pharmacy
   else if (req.userRole === 'ADMIN' && pharmacyId) {
@@ -168,6 +171,10 @@ exports.create = asyncHandler(async (req, res) => {
  * Doctors must have FULL subscription to update products
  */
 exports.update = asyncHandler(async (req, res) => {
+  if (req.userRole === 'PHARMACY') {
+    const subscriptionPolicy = require('../services/subscriptionPolicy.service');
+    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+  }
   const result = await productService.updateProduct(req.params.id, req.body, req.userId);
   res.json({ success: true, message: 'OK', data: result });
 });
@@ -192,6 +199,10 @@ exports.list = asyncHandler(async (req, res) => {
  * Delete product
  */
 exports.delete = asyncHandler(async (req, res) => {
+  if (req.userRole === 'PHARMACY') {
+    const subscriptionPolicy = require('../services/subscriptionPolicy.service');
+    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
+  }
   const result = await productService.deleteProduct(req.params.id, req.userId);
   res.json({ success: true, message: 'OK', data: result });
 });

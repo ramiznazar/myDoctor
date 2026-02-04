@@ -84,3 +84,19 @@ exports.delete = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'OK', data: result });
 });
 
+/**
+ * Pharmacy buys a subscription plan
+ */
+exports.buySubscriptionPlan = asyncHandler(async (req, res) => {
+  const result = await pharmacyService.buySubscriptionPlan(req.userId, req.body.planId);
+  res.json({ success: true, message: 'Subscription plan purchased successfully', data: result });
+});
+
+/**
+ * Get pharmacy's current subscription plan
+ */
+exports.getMySubscriptionPlan = asyncHandler(async (req, res) => {
+  const result = await pharmacyService.getMySubscriptionPlan(req.userId);
+  res.json({ success: true, message: 'OK', data: result });
+});
+

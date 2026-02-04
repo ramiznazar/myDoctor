@@ -80,7 +80,7 @@ const createProduct = async (data) => {
       throw error;
     }
 
-    if (subscriptionPolicy.normalizePlanName(plan.name) !== 'PREMIUM') {
+    if (subscriptionPolicy.normalizePlanName(plan.name, subscriptionPolicy.TARGET_ROLES.DOCTOR) !== 'PREMIUM') {
       const error = new Error('Only doctors with PREMIUM subscription plan can create products. Please upgrade to PREMIUM plan.');
       error.statusCode = 403;
       throw error;
@@ -150,7 +150,7 @@ const updateProduct = async (id, data, userId) => {
     }
 
     const plan = await SubscriptionPlan.findById(seller.subscriptionPlan);
-    if (!plan || subscriptionPolicy.normalizePlanName(plan.name) !== 'PREMIUM') {
+    if (!plan || subscriptionPolicy.normalizePlanName(plan.name, subscriptionPolicy.TARGET_ROLES.DOCTOR) !== 'PREMIUM') {
       const error = new Error('Only doctors with PREMIUM subscription plan can update products');
       error.statusCode = 403;
       throw error;

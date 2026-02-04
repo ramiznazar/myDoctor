@@ -3,7 +3,8 @@ const router = express.Router();
 const pharmacyController = require('../controllers/pharmacy.controller');
 const {
   createPharmacyValidator,
-  updatePharmacyValidator
+  updatePharmacyValidator,
+  buySubscriptionPlanValidator
 } = require('../validators/pharmacy.validators');
 const validate = require('../middleware/validate');
 const authGuard = require('../middleware/authGuard');
@@ -42,6 +43,29 @@ router.get(
   '/me',
   authGuard(['PHARMACY']),
   asyncHandler(pharmacyController.getMyPharmacy)
+);
+
+/**
+ * @route   POST /api/pharmacy/buy-subscription
+ * @desc    Pharmacy buys a subscription plan
+ * @access  Private (Pharmacy)
+ */
+router.post(
+  '/buy-subscription',
+  authGuard(['PHARMACY']),
+  validate(buySubscriptionPlanValidator),
+  asyncHandler(pharmacyController.buySubscriptionPlan)
+);
+
+/**
+ * @route   GET /api/pharmacy/my-subscription
+ * @desc    Get pharmacy's current subscription plan
+ * @access  Private (Pharmacy)
+ */
+router.get(
+  '/my-subscription',
+  authGuard(['PHARMACY']),
+  asyncHandler(pharmacyController.getMySubscriptionPlan)
 );
 
 /**

@@ -47,6 +47,9 @@ exports.getPharmacyOrders = asyncHandler(async (req, res) => {
         message: 'Your pharmacy account is not approved yet. You cannot manage orders until approved.'
       });
     }
+
+    const subscriptionPolicy = require('../services/subscriptionPolicy.service');
+    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
   }
   const result = await orderService.getPharmacyOrders(req.userId, req.query);
   res.json({ success: true, message: 'OK', data: result });
@@ -72,6 +75,9 @@ exports.updateStatus = asyncHandler(async (req, res) => {
         message: 'Your pharmacy account is not approved yet. You cannot update order status until approved.'
       });
     }
+
+    const subscriptionPolicy = require('../services/subscriptionPolicy.service');
+    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
   }
   const { status } = req.body;
   const result = await orderService.updateOrderStatus(
@@ -96,6 +102,9 @@ exports.updateShippingFee = asyncHandler(async (req, res) => {
         message: 'Your pharmacy account is not approved yet. You cannot update shipping until approved.'
       });
     }
+
+    const subscriptionPolicy = require('../services/subscriptionPolicy.service');
+    await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
   }
   const { shippingFee } = req.body;
   const result = await orderService.updateShippingFee(

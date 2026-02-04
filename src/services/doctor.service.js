@@ -5,7 +5,7 @@ const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const Specialization = require('../models/specialization.model');
 const InsuranceCompany = require('../models/insuranceCompany.model');
 const Product = require('../models/product.model');
- const subscriptionPolicy = require('./subscriptionPolicy.service');
+const subscriptionPolicy = require('./subscriptionPolicy.service');
 
 /**
  * Upsert doctor profile (create or update)
@@ -388,6 +388,20 @@ const buySubscriptionPlan = async (doctorId, planId) => {
     throw new Error('Subscription plan not found');
   }
 
+  if (String(plan.targetRole || '').toUpperCase() !== subscriptionPolicy.TARGET_ROLES.DOCTOR) {
+    const error = new Error('Invalid subscription plan for doctor');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalizedName = subscriptionPolicy.normalizePlanName(plan.name, subscriptionPolicy.TARGET_ROLES.DOCTOR);
+  const fixedNames = subscriptionPolicy.getFixedPlanNames(subscriptionPolicy.TARGET_ROLES.DOCTOR);
+  if (!fixedNames.includes(normalizedName)) {
+    const error = new Error('Invalid subscription plan for doctor');
+    error.statusCode = 400;
+    throw error;
+  }
+
   if (plan.status !== 'ACTIVE') {
     throw new Error('Subscription plan is not active');
   }
@@ -439,7 +453,7 @@ const buySubscriptionPlan = async (doctorId, planId) => {
  * @returns {Promise<Object>} Doctor's subscription plan info
  */
 const getMySubscriptionPlan = async (doctorId) => {
-  await subscriptionPolicy.ensureFixedPlansExist();
+  await subscriptionPolicy.ensureFixedPlansExist(subscriptionPolicy.TARGET_ROLES.DOCTOR);
 
   const doctor = await User.findById(doctorId)
     .populate('subscriptionPlan', 'name price durationInDays features status');
@@ -455,8 +469,8 @@ const getMySubscriptionPlan = async (doctorId) => {
   const now = new Date();
   const hasActiveSubscription = doctor.subscriptionPlan && doctor.subscriptionExpiresAt && new Date(doctor.subscriptionExpiresAt) > now;
 
-  const normalizedName = subscriptionPolicy.normalizePlanName(doctor.subscriptionPlan?.name);
-  const policy = subscriptionPolicy.getPlanPolicy(normalizedName);
+  const normalizedName = subscriptionPolicy.normalizePlanName(doctor.subscriptionPlan?.name, subscriptionPolicy.TARGET_ROLES.DOCTOR);
+  const policy = subscriptionPolicy.getPlanPolicy(normalizedName, subscriptionPolicy.TARGET_ROLES.DOCTOR);
 
   const window = subscriptionPolicy.getSubscriptionWindow({
     subscriptionExpiresAt: doctor.subscriptionExpiresAt,
@@ -466,7 +480,7 @@ const getMySubscriptionPlan = async (doctorId) => {
   const remaining = subscriptionPolicy.computeRemaining(policy?.limits || null, usage);
 
   return {
-    subscriptionPlan: subscriptionPolicy.attachPolicyToPlan(doctor.subscriptionPlan),
+    subscriptionPlan: subscriptionPolicy.attachPolicyToPlan(doctor.subscriptionPlan, subscriptionPolicy.TARGET_ROLES.DOCTOR),
     subscriptionExpiresAt: doctor.subscriptionExpiresAt,
     hasActiveSubscription,
     usage,

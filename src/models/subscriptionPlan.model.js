@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const subscriptionPlanSchema = new mongoose.Schema({
+  targetRole: {
+    type: String,
+    enum: ["DOCTOR", "PHARMACY"],
+    default: "DOCTOR"
+  },
   name: {
     type: String,
     required: true
