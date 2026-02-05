@@ -34,6 +34,10 @@ const notificationSchema = new mongoose.Schema({
       "SYSTEM",
       "SUBSCRIPTION",
       "CHAT",
+      "PRESCRIPTION",
+      "RESCHEDULE_REQUEST",
+      "RESCHEDULE_APPROVED",
+      "RESCHEDULE_REJECTED",
       "OTHER"
     ],
     default: null

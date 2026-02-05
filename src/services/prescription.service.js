@@ -68,6 +68,10 @@ const upsertPrescriptionForAppointment = async (doctorId, appointmentId, data) =
         userId: appointment.patientId._id.toString(),
         title: 'New Prescription',
         body: `A prescription has been issued for your appointment ${appointment.appointmentNumber || ''}`.trim(),
+        i18n: {
+          title: { it: 'Nuova prescrizione' },
+          body: { it: `È stata emessa una prescrizione per il tuo appuntamento ${appointment.appointmentNumber || ''}`.trim() },
+        },
         type: 'PRESCRIPTION',
         data: { prescriptionId: created._id.toString(), appointmentId: appointment._id.toString() }
       });
@@ -108,6 +112,10 @@ const upsertPrescriptionForAppointment = async (doctorId, appointmentId, data) =
       userId: appointment.patientId._id.toString(),
       title: 'New Prescription',
       body: `A prescription has been issued for your appointment ${appointment.appointmentNumber || ''}`.trim(),
+      i18n: {
+        title: { it: 'Nuova prescrizione' },
+        body: { it: `È stata emessa una prescrizione per il tuo appuntamento ${appointment.appointmentNumber || ''}`.trim() },
+      },
       type: 'PRESCRIPTION',
       data: { prescriptionId: existing._id.toString(), appointmentId: appointment._id.toString() }
     });

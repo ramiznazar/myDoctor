@@ -16,7 +16,7 @@ const createNotificationValidator = z.object({
     title: z.string().min(1, "Title is required"),
     body: z.string().min(1, "Body is required"),
     i18n: i18nValidator,
-    type: z.enum(["APPOINTMENT", "PAYMENT", "SYSTEM", "SUBSCRIPTION", "CHAT", "OTHER"]).optional(),
+    type: z.enum(["APPOINTMENT", "PAYMENT", "SYSTEM", "SUBSCRIPTION", "CHAT", "PRESCRIPTION", "RESCHEDULE_REQUEST", "RESCHEDULE_APPROVED", "RESCHEDULE_REJECTED", "OTHER"]).optional(),
     data: z.any().optional()
   })
 });
@@ -41,7 +41,7 @@ const markNotificationReadValidator = z.object({
  */
 const getNotificationsValidator = z.object({
   query: z.object({
-    type: z.enum(["APPOINTMENT", "PAYMENT", "SYSTEM", "SUBSCRIPTION", "CHAT", "OTHER"]).optional(),
+    type: z.enum(["APPOINTMENT", "PAYMENT", "SYSTEM", "SUBSCRIPTION", "CHAT", "PRESCRIPTION", "RESCHEDULE_REQUEST", "RESCHEDULE_APPROVED", "RESCHEDULE_REJECTED", "OTHER"]).optional(),
     isRead: z.string().transform((val) => val === "true").optional(),
     page: z.string().regex(/^\d+$/).transform(Number).optional().default("1"),
     limit: z.string().regex(/^\d+$/).transform(Number).optional().default("20")

@@ -81,6 +81,10 @@ const sendAppointmentTimeNotifications = async () => {
             userId: appointment.doctorId._id,
             title: 'Video Call Appointment Time',
             body: `Your video call appointment with ${appointment.patientId.fullName} is starting now. Click to join the call.`,
+            i18n: {
+              title: { it: 'È ora della videochiamata' },
+              body: { it: `La tua videochiamata con ${appointment.patientId.fullName} sta iniziando ora. Clicca per partecipare.` },
+            },
             type: 'APPOINTMENT',
             data: { 
               appointmentId: appointment._id,
@@ -92,6 +96,10 @@ const sendAppointmentTimeNotifications = async () => {
             userId: appointment.patientId._id,
             title: 'Video Call Appointment Time',
             body: `Your video call appointment with Dr. ${appointment.doctorId.fullName} is starting now. Click to join the call.`,
+            i18n: {
+              title: { it: 'È ora della videochiamata' },
+              body: { it: `La tua videochiamata con il Dott. ${appointment.doctorId.fullName} sta iniziando ora. Clicca per partecipare.` },
+            },
             type: 'APPOINTMENT',
             data: { 
               appointmentId: appointment._id,
@@ -197,6 +205,10 @@ const sendUpcomingAppointmentNotifications = async () => {
               userId: appointment.doctorId._id,
               title: 'Upcoming Video Call Appointment',
               body: `You have a video call appointment with ${appointment.patientId.fullName} in 5 minutes at ${localTimeString}.`,
+              i18n: {
+                title: { it: 'Videochiamata in arrivo' },
+                body: { it: `Hai una videochiamata con ${appointment.patientId.fullName} tra 5 minuti alle ${localTimeString}.` },
+              },
               type: 'APPOINTMENT',
               data: { 
                 appointmentId: appointment._id,
@@ -208,6 +220,10 @@ const sendUpcomingAppointmentNotifications = async () => {
               userId: appointment.patientId._id,
               title: 'Upcoming Video Call Appointment',
               body: `You have a video call appointment with Dr. ${appointment.doctorId.fullName} in 5 minutes at ${localTimeString}.`,
+              i18n: {
+                title: { it: 'Videochiamata in arrivo' },
+                body: { it: `Hai una videochiamata con il Dott. ${appointment.doctorId.fullName} tra 5 minuti alle ${localTimeString}.` },
+              },
               type: 'APPOINTMENT',
               data: { 
                 appointmentId: appointment._id,

@@ -182,6 +182,10 @@ const createRescheduleRequest = async (data) => {
     userId: doctorId,
     title: 'New Reschedule Request',
     body: `Patient ${appointment.patientId.fullName} has requested to reschedule appointment scheduled for ${new Date(appointment.appointmentDate).toLocaleDateString()} at ${appointment.appointmentTime}`,
+    i18n: {
+      title: { it: 'Nuova richiesta di riprogrammazione' },
+      body: { it: `Il paziente ${appointment.patientId.fullName} ha richiesto di riprogrammare l'appuntamento del ${new Date(appointment.appointmentDate).toLocaleDateString('it-IT')} alle ${appointment.appointmentTime}` },
+    },
     type: 'RESCHEDULE_REQUEST',
     data: {
       rescheduleRequestId: rescheduleRequest._id.toString(),
@@ -312,6 +316,10 @@ const approveRescheduleRequest = async (requestId, doctorId, approvalData) => {
     userId: patientId,
     title: 'Reschedule Request Approved',
     body: `Your reschedule request has been approved. Please pay $${calculatedFee.toFixed(2)} to confirm your new appointment on ${new Date(newAppointmentDate).toLocaleDateString()} at ${newAppointmentTime}`,
+    i18n: {
+      title: { it: 'Richiesta di riprogrammazione approvata' },
+      body: { it: `La tua richiesta di riprogrammazione è stata approvata. Per favore paga $${calculatedFee.toFixed(2)} per confermare il nuovo appuntamento il ${new Date(newAppointmentDate).toLocaleDateString('it-IT')} alle ${newAppointmentTime}` },
+    },
     type: 'RESCHEDULE_APPROVED',
     data: {
       rescheduleRequestId: request._id.toString(),
@@ -364,6 +372,10 @@ const rejectRescheduleRequest = async (requestId, doctorId, rejectionReason) => 
     userId: patientId,
     title: 'Reschedule Request Rejected',
     body: `Your reschedule request has been rejected. Reason: ${rejectionReason}`,
+    i18n: {
+      title: { it: 'Richiesta di riprogrammazione rifiutata' },
+      body: { it: `La tua richiesta di riprogrammazione è stata rifiutata. Motivo: ${rejectionReason}` },
+    },
     type: 'RESCHEDULE_REJECTED',
     data: {
       rescheduleRequestId: request._id.toString(),
@@ -432,6 +444,10 @@ const processReschedulePayment = async (requestId, patientId, paymentMethod = 'D
     userId: patientId,
     title: 'Reschedule Payment Successful',
     body: `Your reschedule fee has been paid. Your new appointment is confirmed for ${new Date(newAppointment.appointmentDate).toLocaleDateString()} at ${newAppointment.appointmentTime}`,
+    i18n: {
+      title: { it: 'Pagamento riprogrammazione riuscito' },
+      body: { it: `La quota di riprogrammazione è stata pagata. Il nuovo appuntamento è confermato per il ${new Date(newAppointment.appointmentDate).toLocaleDateString('it-IT')} alle ${newAppointment.appointmentTime}` },
+    },
     type: 'APPOINTMENT',
     data: {
       appointmentId: newAppointment._id.toString()
@@ -447,6 +463,10 @@ const processReschedulePayment = async (requestId, patientId, paymentMethod = 'D
     userId: doctorId,
     title: 'Rescheduled Appointment Confirmed',
     body: `Patient has paid the reschedule fee. New appointment confirmed for ${new Date(newAppointment.appointmentDate).toLocaleDateString()} at ${newAppointment.appointmentTime}`,
+    i18n: {
+      title: { it: 'Appuntamento riprogrammato confermato' },
+      body: { it: `Il paziente ha pagato la quota di riprogrammazione. Nuovo appuntamento confermato per il ${new Date(newAppointment.appointmentDate).toLocaleDateString('it-IT')} alle ${newAppointment.appointmentTime}` },
+    },
     type: 'APPOINTMENT',
     data: {
       appointmentId: newAppointment._id.toString()

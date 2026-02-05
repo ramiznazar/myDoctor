@@ -91,6 +91,14 @@ const sendMessage = async (data) => {
           userId: doctorId,
           title: 'New Message from Admin',
           body: message ? (message.length > 100 ? message.substring(0, 100) + '...' : message) : 'You have a new message',
+          i18n: {
+            title: { it: 'Nuovo messaggio dall\'amministratore' },
+            body: {
+              it: message
+                ? (message.length > 100 ? message.substring(0, 100) + '...' : message)
+                : 'Hai un nuovo messaggio',
+            },
+          },
           type: 'CHAT',
           data: {
             conversationId: conversation._id.toString(),

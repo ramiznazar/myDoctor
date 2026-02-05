@@ -192,6 +192,10 @@ const createAppointment = async (data) => {
       userId: doctorId,
       title: 'New Appointment Request',
       body: `${patient.fullName} has requested an appointment on ${new Date(appointmentDate).toLocaleDateString()} at ${appointmentTime}`,
+      i18n: {
+        title: { it: 'Nuova richiesta di appuntamento' },
+        body: { it: `${patient.fullName} ha richiesto un appuntamento il ${new Date(appointmentDate).toLocaleDateString('it-IT')} alle ${appointmentTime}` },
+      },
       type: 'APPOINTMENT',
       data: { appointmentId: appointment._id }
     }),
@@ -199,6 +203,10 @@ const createAppointment = async (data) => {
       userId: patientId,
       title: 'Appointment Requested',
       body: `Your appointment request with Dr. ${doctor.fullName} is pending confirmation`,
+      i18n: {
+        title: { it: 'Appuntamento richiesto' },
+        body: { it: `La tua richiesta di appuntamento con il Dott. ${doctor.fullName} è in attesa di conferma` },
+      },
       type: 'APPOINTMENT',
       data: { appointmentId: appointment._id }
     })
@@ -301,6 +309,14 @@ const updateAppointmentStatus = async (id, statusData) => {
       userId: appointment.patientId._id.toString(),
       title: status === 'CONFIRMED' ? 'Appointment Confirmed' : 'Appointment Rejected',
       body: statusMessage,
+      i18n: {
+        title: { it: status === 'CONFIRMED' ? 'Appuntamento confermato' : 'Appuntamento rifiutato' },
+        body: {
+          it: status === 'CONFIRMED'
+            ? `Il tuo appuntamento con il Dott. ${appointment.doctorId.fullName} è stato confermato`
+            : `Il tuo appuntamento con il Dott. ${appointment.doctorId.fullName} è stato rifiutato`,
+        },
+      },
       type: 'APPOINTMENT',
       data: { appointmentId: appointment._id }
     });
@@ -343,6 +359,10 @@ const acceptAppointment = async (appointmentId, doctorId) => {
     userId: appointment.patientId.toString(),
     title: 'Appointment Confirmed',
     body: `Your appointment with Dr. ${doctor.fullName} has been confirmed`,
+    i18n: {
+      title: { it: 'Appuntamento confermato' },
+      body: { it: `Il tuo appuntamento con il Dott. ${doctor.fullName} è stato confermato` },
+    },
     type: 'APPOINTMENT',
     data: { appointmentId: appointment._id }
   });
@@ -388,6 +408,10 @@ const rejectAppointment = async (appointmentId, doctorId, reason = null) => {
     userId: appointment.patientId.toString(),
     title: 'Appointment Rejected',
     body: `Your appointment with Dr. ${doctor.fullName} has been rejected${reason ? ': ' + reason : ''}`,
+    i18n: {
+      title: { it: 'Appuntamento rifiutato' },
+      body: { it: `Il tuo appuntamento con il Dott. ${doctor.fullName} è stato rifiutato${reason ? ': ' + reason : ''}` },
+    },
     type: 'APPOINTMENT',
     data: { appointmentId: appointment._id }
   });
@@ -441,6 +465,10 @@ const cancelAppointment = async (appointmentId, patientId, reason = null) => {
     userId: appointment.doctorId._id.toString(),
     title: 'Appointment Cancelled',
     body: `${appointment.patientId.fullName} has cancelled their appointment${reason ? ': ' + reason : ''}`,
+    i18n: {
+      title: { it: 'Appuntamento annullato' },
+      body: { it: `${appointment.patientId.fullName} ha annullato l'appuntamento${reason ? ': ' + reason : ''}` },
+    },
     type: 'APPOINTMENT',
     data: { appointmentId: appointment._id }
   });
