@@ -1,5 +1,12 @@
 const { z } = require("zod");
 
+const i18nValidator = z
+  .object({
+    title: z.record(z.string()).optional(),
+    content: z.record(z.string()).optional(),
+  })
+  .optional();
+
 /**
  * Create blog post validator
  */
@@ -7,6 +14,7 @@ const createBlogPostValidator = z.object({
   body: z.object({
     title: z.string().min(3, "Title must be at least 3 characters"),
     content: z.string().min(10, "Content must be at least 10 characters"),
+    i18n: i18nValidator,
     slug: z.string().optional(),
     coverImage: z.string().url("Invalid cover image URL").optional(),
     tags: z.array(z.string()).optional(),
@@ -22,6 +30,7 @@ const updateBlogPostValidator = z.object({
   body: z.object({
     title: z.string().min(3, "Title must be at least 3 characters").optional(),
     content: z.string().min(10, "Content must be at least 10 characters").optional(),
+    i18n: i18nValidator,
     slug: z.string().optional(),
     coverImage: z.string().url("Invalid cover image URL").optional(),
     tags: z.array(z.string()).optional(),

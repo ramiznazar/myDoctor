@@ -1,5 +1,14 @@
 const { z } = require("zod");
 
+const i18nValidator = z
+  .object({
+    name: z.record(z.string()).optional(),
+    description: z.record(z.string()).optional(),
+    category: z.record(z.string()).optional(),
+    subCategory: z.record(z.string()).optional(),
+  })
+  .optional();
+
 /**
  * Create product validator
  * sellerId and sellerType are automatically set from authenticated user
@@ -13,6 +22,7 @@ const createProductValidator = z.object({
     price: z.number().nonnegative("Price must be non-negative"),
     stock: z.number().int().nonnegative("Stock must be a non-negative integer"),
     description: z.string().optional(),
+    i18n: i18nValidator,
     sku: z.string().optional(),
     discountPrice: z.number().nonnegative("Discount price must be non-negative").optional(),
     images: z.array(
@@ -38,6 +48,7 @@ const updateProductValidator = z.object({
     price: z.number().nonnegative("Price must be non-negative").optional(),
     stock: z.number().int().nonnegative("Stock must be a non-negative integer").optional(),
     description: z.string().optional(),
+    i18n: i18nValidator,
     sku: z.string().optional(),
     discountPrice: z.number().nonnegative("Discount price must be non-negative").optional(),
     images: z.array(

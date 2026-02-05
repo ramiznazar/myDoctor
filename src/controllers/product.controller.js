@@ -186,7 +186,7 @@ exports.update = asyncHandler(async (req, res) => {
  * Get product by ID
  */
 exports.getById = asyncHandler(async (req, res) => {
-  const result = await productService.getProduct(req.params.id);
+  const result = await productService.getProduct(req.params.id, { lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -194,7 +194,7 @@ exports.getById = asyncHandler(async (req, res) => {
  * List products with filtering
  */
 exports.list = asyncHandler(async (req, res) => {
-  const result = await productService.listProducts(req.query);
+  const result = await productService.listProducts(req.query, { lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 

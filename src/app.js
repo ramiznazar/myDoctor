@@ -4,6 +4,7 @@ const path = require("path");
 const routes = require("./routes");
 const errorHandler = require("./middleware/errorHandler");
 const requestLogger = require("./middleware/requestLogger");
+const languageMiddleware = require("./middleware/language.middleware");
 
 require("./config/env"); // load ENV
 
@@ -13,7 +14,7 @@ const app = express();
 app.use(cors({
   origin: "*", // Allow all origins
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Accept-Language", "Origin"],
   credentials: false, // Set to false when using wildcard origin
   preflightContinue: false,
   optionsSuccessStatus: 204
@@ -39,6 +40,7 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads"), {
 }));
 
 app.use(requestLogger); // optional but useful
+app.use(languageMiddleware);
 
 // Mount all API routes
 app.use("/api", routes);

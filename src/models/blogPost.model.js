@@ -5,6 +5,18 @@ const blogPostSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  i18n: {
+    title: {
+      type: Map,
+      of: String,
+      default: undefined
+    },
+    content: {
+      type: Map,
+      of: String,
+      default: undefined
+    }
+  },
   slug: {
     type: String,
     unique: true,

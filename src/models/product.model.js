@@ -19,6 +19,28 @@ const productSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  i18n: {
+    name: {
+      type: Map,
+      of: String,
+      default: undefined
+    },
+    description: {
+      type: Map,
+      of: String,
+      default: undefined
+    },
+    category: {
+      type: Map,
+      of: String,
+      default: undefined
+    },
+    subCategory: {
+      type: Map,
+      of: String,
+      default: undefined
+    }
+  },
   sku: {
     type: String,
     default: null

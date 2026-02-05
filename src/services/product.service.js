@@ -2,6 +2,7 @@ const Product = require('../models/product.model');
 const User = require('../models/user.model');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
  const subscriptionPolicy = require('./subscriptionPolicy.service');
+const { normalizeLang, localizeProduct } = require('../utils/localization');
 
 /**
  * Create product
@@ -16,6 +17,7 @@ const createProduct = async (data) => {
     price,
     stock,
     description,
+    i18n,
     sku,
     discountPrice,
     images,
@@ -98,6 +100,7 @@ const createProduct = async (data) => {
     price,
     stock: stock || 0,
     description,
+    i18n,
     sku,
     discountPrice,
     images: images || [],
@@ -180,7 +183,7 @@ const updateProduct = async (id, data, userId) => {
  * @param {string} id - Product ID
  * @returns {Promise<Object>} Product
  */
-const getProduct = async (id) => {
+const getProduct = async (id, options = {}) => {
   const product = await Product.findById(id)
     .populate('sellerId', 'fullName email phone profileImage');
   
@@ -188,7 +191,8 @@ const getProduct = async (id) => {
     throw new Error('Product not found');
   }
 
-  return product;
+  const lang = normalizeLang(options.lang);
+  return lang ? localizeProduct(product, lang) : product;
 };
 
 /**
@@ -196,7 +200,7 @@ const getProduct = async (id) => {
  * @param {Object} filter - Filter criteria
  * @returns {Promise<Object>} Products and pagination info
  */
-const listProducts = async (filter = {}) => {
+const listProducts = async (filter = {}, options = {}) => {
   const {
     sellerId,
     sellerType,
@@ -209,6 +213,9 @@ const listProducts = async (filter = {}) => {
     page = 1,
     limit = 10
   } = filter;
+
+  const lang = normalizeLang(options.lang);
+  const baseLang = lang ? lang.split('-')[0] : null;
 
   const query = { isActive: true, sellerType: { $ne: 'DOCTOR' } };
 
@@ -242,10 +249,22 @@ const listProducts = async (filter = {}) => {
   }
 
   if (search) {
-    query.$or = [
+    const searchOr = [
       { name: { $regex: search, $options: 'i' } },
       { description: { $regex: search, $options: 'i' } }
     ];
+
+    if (lang) {
+      searchOr.push({ [`i18n.name.${lang}`]: { $regex: search, $options: 'i' } });
+      searchOr.push({ [`i18n.description.${lang}`]: { $regex: search, $options: 'i' } });
+    }
+
+    if (baseLang && baseLang !== lang) {
+      searchOr.push({ [`i18n.name.${baseLang}`]: { $regex: search, $options: 'i' } });
+      searchOr.push({ [`i18n.description.${baseLang}`]: { $regex: search, $options: 'i' } });
+    }
+
+    query.$or = searchOr;
   }
 
   const skip = (page - 1) * limit;
@@ -259,8 +278,10 @@ const listProducts = async (filter = {}) => {
     Product.countDocuments(query)
   ]);
 
+  const localizedProducts = lang ? products.map((p) => localizeProduct(p, lang)) : products;
+
   return {
-    products,
+    products: localizedProducts,
     pagination: {
       page,
       limit,

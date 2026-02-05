@@ -1,5 +1,12 @@
 const { z } = require("zod");
 
+const i18nValidator = z
+  .object({
+    title: z.record(z.string()).optional(),
+    body: z.record(z.string()).optional(),
+  })
+  .optional();
+
 /**
  * Create notification validator
  */
@@ -8,6 +15,7 @@ const createNotificationValidator = z.object({
     userId: z.string().min(1, "User ID is required"),
     title: z.string().min(1, "Title is required"),
     body: z.string().min(1, "Body is required"),
+    i18n: i18nValidator,
     type: z.enum(["APPOINTMENT", "PAYMENT", "SYSTEM", "SUBSCRIPTION", "CHAT", "OTHER"]).optional(),
     data: z.any().optional()
   })

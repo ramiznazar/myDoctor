@@ -9,7 +9,7 @@ exports.create = asyncHandler(async (req, res) => {
     ...req.body,
     createdBy: req.userId
   };
-  const result = await announcementService.createAnnouncement(announcementData);
+  const result = await announcementService.createAnnouncement(announcementData, { lang: req.lang });
   res.json({ success: true, message: 'Announcement created successfully', data: result });
 });
 
@@ -17,7 +17,7 @@ exports.create = asyncHandler(async (req, res) => {
  * List announcements (admin)
  */
 exports.list = asyncHandler(async (req, res) => {
-  const result = await announcementService.listAnnouncements(req.query);
+  const result = await announcementService.listAnnouncements(req.query, { lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -25,7 +25,7 @@ exports.list = asyncHandler(async (req, res) => {
  * Get announcements for doctor
  */
 exports.getForDoctor = asyncHandler(async (req, res) => {
-  const result = await announcementService.getAnnouncementsForDoctor(req.userId, req.query);
+  const result = await announcementService.getAnnouncementsForDoctor(req.userId, { ...req.query, lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -33,7 +33,7 @@ exports.getForDoctor = asyncHandler(async (req, res) => {
  * Get single announcement
  */
 exports.getById = asyncHandler(async (req, res) => {
-  const result = await announcementService.getAnnouncementById(req.params.id);
+  const result = await announcementService.getAnnouncementById(req.params.id, { lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -41,7 +41,7 @@ exports.getById = asyncHandler(async (req, res) => {
  * Update announcement
  */
 exports.update = asyncHandler(async (req, res) => {
-  const result = await announcementService.updateAnnouncement(req.params.id, req.body);
+  const result = await announcementService.updateAnnouncement(req.params.id, req.body, { lang: req.lang });
   res.json({ success: true, message: 'Announcement updated successfully', data: result });
 });
 

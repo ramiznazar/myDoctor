@@ -9,7 +9,7 @@ exports.create = asyncHandler(async (req, res) => {
     ...req.body,
     authorId: req.userId
   };
-  const result = await blogService.createBlogPost(blogData);
+  const result = await blogService.createBlogPost(blogData, { lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -17,7 +17,7 @@ exports.create = asyncHandler(async (req, res) => {
  * Update blog post
  */
 exports.update = asyncHandler(async (req, res) => {
-  const result = await blogService.updateBlogPost(req.params.id, req.body);
+  const result = await blogService.updateBlogPost(req.params.id, req.body, { lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -25,7 +25,7 @@ exports.update = asyncHandler(async (req, res) => {
  * Get blog post by ID
  */
 exports.getById = asyncHandler(async (req, res) => {
-  const result = await blogService.getBlogPost(req.params.id);
+  const result = await blogService.getBlogPost(req.params.id, { lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -33,7 +33,7 @@ exports.getById = asyncHandler(async (req, res) => {
  * List blog posts with filtering
  */
 exports.list = asyncHandler(async (req, res) => {
-  const result = await blogService.listBlogPosts(req.query);
+  const result = await blogService.listBlogPosts(req.query, { lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 

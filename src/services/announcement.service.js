@@ -3,16 +3,18 @@ const AnnouncementRead = require('../models/announcementRead.model');
 const User = require('../models/user.model');
 const DoctorProfile = require('../models/doctorProfile.model');
 const Notification = require('../models/notification.model');
+const { normalizeLang, localizeAnnouncement } = require('../utils/localization');
 
 /**
  * Create announcement
  * @param {Object} data - Announcement data
  * @returns {Promise<Object>} Created announcement
  */
-const createAnnouncement = async (data) => {
+const createAnnouncement = async (data, options = {}) => {
   const {
     title,
     message,
+    i18n,
     image,
     file,
     link,
@@ -40,6 +42,7 @@ const createAnnouncement = async (data) => {
   const announcement = await Announcement.create({
     title,
     message,
+    i18n,
     image,
     file,
     link,
@@ -56,7 +59,8 @@ const createAnnouncement = async (data) => {
   // Send notifications to target doctors
   await sendAnnouncementNotifications(announcement);
 
-  return announcement;
+  const lang = normalizeLang(options.lang);
+  return lang ? localizeAnnouncement(announcement, lang) : announcement;
 };
 
 /**
@@ -133,6 +137,10 @@ const sendAnnouncementNotifications = async (announcement) => {
       userId: doctor._id,
       title: announcement.priority === 'URGENT' ? `🚨 URGENT: ${announcement.title}` : announcement.title,
       body: announcement.message.length > 200 ? announcement.message.substring(0, 200) + '...' : announcement.message,
+      i18n: {
+        title: announcement.i18n?.title,
+        body: announcement.i18n?.message,
+      },
       type: 'SYSTEM',
       data: {
         announcementId: announcement._id.toString(),
@@ -156,7 +164,7 @@ const sendAnnouncementNotifications = async (announcement) => {
  * @param {Object} filter - Filter options
  * @returns {Promise<Object>} Announcements and pagination info
  */
-const listAnnouncements = async (filter = {}) => {
+const listAnnouncements = async (filter = {}, options = {}) => {
   const {
     priority,
     announcementType,
@@ -206,8 +214,11 @@ const listAnnouncements = async (filter = {}) => {
     Announcement.countDocuments(query)
   ]);
 
+  const lang = normalizeLang(options.lang);
+  const localizedAnnouncements = lang ? announcements.map((a) => localizeAnnouncement(a, lang)) : announcements;
+
   return {
-    announcements,
+    announcements: localizedAnnouncements,
     pagination: {
       page,
       limit,
@@ -225,6 +236,7 @@ const listAnnouncements = async (filter = {}) => {
  */
 const getAnnouncementsForDoctor = async (doctorId, options = {}) => {
   const { page = 1, limit = 20, isRead } = options;
+  const lang = normalizeLang(options.lang);
 
   // Verify doctor exists and is approved
   const doctor = await User.findById(doctorId);
@@ -324,7 +336,7 @@ const getAnnouncementsForDoctor = async (doctorId, options = {}) => {
     .map(announcement => {
       const announcementObj = announcement.toObject();
       announcementObj.isRead = readMap.has(announcement._id.toString());
-      return announcementObj;
+      return lang ? localizeAnnouncement(announcementObj, lang) : announcementObj;
     });
 
   return {
@@ -343,7 +355,7 @@ const getAnnouncementsForDoctor = async (doctorId, options = {}) => {
  * @param {string} announcementId - Announcement ID
  * @returns {Promise<Object>} Announcement
  */
-const getAnnouncementById = async (announcementId) => {
+const getAnnouncementById = async (announcementId, options = {}) => {
   const announcement = await Announcement.findById(announcementId)
     .populate('createdBy', 'fullName email')
     .populate('targetCriteria.specializationIds', 'name')
@@ -354,7 +366,8 @@ const getAnnouncementById = async (announcementId) => {
     throw new Error('Announcement not found');
   }
 
-  return announcement;
+  const lang = normalizeLang(options.lang);
+  return lang ? localizeAnnouncement(announcement, lang) : announcement;
 };
 
 /**
@@ -363,7 +376,7 @@ const getAnnouncementById = async (announcementId) => {
  * @param {Object} data - Update data
  * @returns {Promise<Object>} Updated announcement
  */
-const updateAnnouncement = async (announcementId, data) => {
+const updateAnnouncement = async (announcementId, data, options = {}) => {
   const announcement = await Announcement.findById(announcementId);
 
   if (!announcement) {
@@ -373,6 +386,7 @@ const updateAnnouncement = async (announcementId, data) => {
   // Update allowed fields
   if (data.title !== undefined) announcement.title = data.title;
   if (data.message !== undefined) announcement.message = data.message;
+  if (data.i18n !== undefined) announcement.i18n = data.i18n;
   if (data.image !== undefined) announcement.image = data.image;
   if (data.file !== undefined) announcement.file = data.file;
   if (data.link !== undefined) announcement.link = data.link;
@@ -385,7 +399,8 @@ const updateAnnouncement = async (announcementId, data) => {
 
   await announcement.save();
 
-  return announcement;
+  const lang = normalizeLang(options.lang);
+  return lang ? localizeAnnouncement(announcement, lang) : announcement;
 };
 
 /**

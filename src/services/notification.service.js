@@ -1,5 +1,6 @@
 const Notification = require('../models/notification.model');
 const User = require('../models/user.model');
+const { normalizeLang, localizeNotification } = require('../utils/localization');
 
 /**
  * Create notification
@@ -7,7 +8,7 @@ const User = require('../models/user.model');
  * @returns {Promise<Object>} Created notification
  */
 const createNotification = async (data) => {
-  const { userId, title, body, type, data: notificationData } = data;
+  const { userId, title, body, i18n, type, data: notificationData } = data;
 
   // Verify user exists
   const user = await User.findById(userId);
@@ -19,6 +20,7 @@ const createNotification = async (data) => {
     userId,
     title,
     body,
+    i18n,
     type: type || 'SYSTEM',
     data: notificationData || null,
     isRead: false
@@ -65,6 +67,8 @@ const listNotifications = async (userId, options = {}) => {
     limit = 20
   } = options;
 
+  const lang = normalizeLang(options.lang);
+
   const query = { userId };
 
   if (type) {
@@ -85,8 +89,10 @@ const listNotifications = async (userId, options = {}) => {
     Notification.countDocuments(query)
   ]);
 
+  const localizedNotifications = lang ? notifications.map((n) => localizeNotification(n, lang)) : notifications;
+
   return {
-    notifications,
+    notifications: localizedNotifications,
     pagination: {
       page,
       limit,

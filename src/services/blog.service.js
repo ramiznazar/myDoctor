@@ -1,13 +1,14 @@
 const BlogPost = require('../models/blogPost.model');
 const User = require('../models/user.model');
+const { normalizeLang, localizeBlogPost } = require('../utils/localization');
 
 /**
  * Create blog post
  * @param {Object} data - Blog post data
  * @returns {Promise<Object>} Created blog post
  */
-const createBlogPost = async (data) => {
-  const { title, content, slug, coverImage, tags, isPublished, publishedAt, authorId } = data;
+const createBlogPost = async (data, options = {}) => {
+  const { title, content, i18n, slug, coverImage, tags, isPublished, publishedAt, authorId } = data;
 
   // Verify author exists
   const author = await User.findById(authorId);
@@ -27,6 +28,7 @@ const createBlogPost = async (data) => {
   const blogPost = await BlogPost.create({
     title,
     content,
+    i18n,
     slug: generatedSlug,
     coverImage,
     tags: tags || [],
@@ -35,7 +37,8 @@ const createBlogPost = async (data) => {
     authorId
   });
 
-  return blogPost;
+  const lang = normalizeLang(options.lang);
+  return lang ? localizeBlogPost(blogPost, lang) : blogPost;
 };
 
 /**
@@ -44,7 +47,7 @@ const createBlogPost = async (data) => {
  * @param {Object} data - Update data
  * @returns {Promise<Object>} Updated blog post
  */
-const updateBlogPost = async (id, data) => {
+const updateBlogPost = async (id, data, options = {}) => {
   const blogPost = await BlogPost.findById(id);
   
   if (!blogPost) {
@@ -74,7 +77,8 @@ const updateBlogPost = async (id, data) => {
 
   await blogPost.save();
 
-  return blogPost;
+  const lang = normalizeLang(options.lang);
+  return lang ? localizeBlogPost(blogPost, lang) : blogPost;
 };
 
 /**
@@ -82,7 +86,7 @@ const updateBlogPost = async (id, data) => {
  * @param {Object} filter - Filter criteria
  * @returns {Promise<Object>} Blog posts and pagination info
  */
-const listBlogPosts = async (filter = {}) => {
+const listBlogPosts = async (filter = {}, options = {}) => {
   const {
     authorId,
     isPublished,
@@ -91,6 +95,9 @@ const listBlogPosts = async (filter = {}) => {
     page = 1,
     limit = 10
   } = filter;
+
+  const lang = normalizeLang(options.lang);
+  const baseLang = lang ? lang.split('-')[0] : null;
 
   const query = {};
 
@@ -111,10 +118,22 @@ const listBlogPosts = async (filter = {}) => {
   }
 
   if (search) {
-    query.$or = [
+    const searchOr = [
       { title: { $regex: search, $options: 'i' } },
       { content: { $regex: search, $options: 'i' } }
     ];
+
+    if (lang) {
+      searchOr.push({ [`i18n.title.${lang}`]: { $regex: search, $options: 'i' } });
+      searchOr.push({ [`i18n.content.${lang}`]: { $regex: search, $options: 'i' } });
+    }
+
+    if (baseLang && baseLang !== lang) {
+      searchOr.push({ [`i18n.title.${baseLang}`]: { $regex: search, $options: 'i' } });
+      searchOr.push({ [`i18n.content.${baseLang}`]: { $regex: search, $options: 'i' } });
+    }
+
+    query.$or = searchOr;
   }
 
   const skip = (page - 1) * limit;
@@ -128,8 +147,10 @@ const listBlogPosts = async (filter = {}) => {
     BlogPost.countDocuments(query)
   ]);
 
+  const localizedBlogPosts = lang ? blogPosts.map((p) => localizeBlogPost(p, lang)) : blogPosts;
+
   return {
-    blogPosts,
+    blogPosts: localizedBlogPosts,
     pagination: {
       page,
       limit,
@@ -144,7 +165,7 @@ const listBlogPosts = async (filter = {}) => {
  * @param {string} id - Blog post ID
  * @returns {Promise<Object>} Blog post
  */
-const getBlogPost = async (id) => {
+const getBlogPost = async (id, options = {}) => {
   const blogPost = await BlogPost.findById(id)
     .populate('authorId', 'fullName email phone profileImage');
   
@@ -152,7 +173,8 @@ const getBlogPost = async (id) => {
     throw new Error('Blog post not found');
   }
 
-  return blogPost;
+  const lang = normalizeLang(options.lang);
+  return lang ? localizeBlogPost(blogPost, lang) : blogPost;
 };
 
 /**

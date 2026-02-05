@@ -14,6 +14,18 @@ const notificationSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  i18n: {
+    title: {
+      type: Map,
+      of: String,
+      default: undefined
+    },
+    body: {
+      type: Map,
+      of: String,
+      default: undefined
+    }
+  },
   type: {
     type: String,
     enum: [

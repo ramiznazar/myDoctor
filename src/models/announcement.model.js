@@ -10,6 +10,18 @@ const announcementSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  i18n: {
+    title: {
+      type: Map,
+      of: String,
+      default: undefined
+    },
+    message: {
+      type: Map,
+      of: String,
+      default: undefined
+    }
+  },
   image: {
     type: String,
     default: null
