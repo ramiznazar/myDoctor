@@ -136,7 +136,7 @@ exports.payForOrder = asyncHandler(async (req, res) => {
     req.params.id,
     req.userId,
     req.userRole,
-    paymentMethod || 'DUMMY'
+    paymentMethod || 'STRIPE'
   );
   res.json({ 
     success: true, 

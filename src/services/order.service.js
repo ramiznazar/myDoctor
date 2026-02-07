@@ -33,7 +33,6 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
 
   // Group products by pharmacy/owner
   const pharmacyMap = new Map();
-  let orderItems = [];
   let subtotal = 0;
 
   for (const item of items) {
@@ -66,14 +65,6 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     const itemTotal = itemPrice * item.quantity;
     subtotal += itemTotal;
 
-    orderItems.push({
-      productId: product._id,
-      quantity: item.quantity,
-      price: product.price,
-      discountPrice: product.discountPrice,
-      total: itemTotal
-    });
-
     pharmacyMap.get(pharmacyId).items.push({
       productId: product._id,
       quantity: item.quantity,
@@ -83,43 +74,37 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     });
   }
 
-  // For now, we'll create one order per pharmacy
-  // In a real scenario, you might want to create multiple orders if items are from different pharmacies
-  // For simplicity, we'll assume all items are from the same pharmacy
-  if (pharmacyMap.size > 1) {
-    throw new Error('All items must be from the same pharmacy');
+  const createdOrders = [];
+  for (const pharmacyData of Array.from(pharmacyMap.values())) {
+    const orderItems = pharmacyData.items;
+    const orderSubtotal = orderItems.reduce((sum, i) => sum + (i.total || 0), 0);
+    const tax = orderSubtotal * 0.1; // 10% tax (you can make this configurable)
+    const initialShipping = shippingAddress ? 10 : 0; // Initial shipping estimate (owner will set final)
+    const initialTotal = orderSubtotal + tax + initialShipping;
+
+    // Create order with PENDING status (no payment yet)
+    // Owner will set final shipping fee, then patient will pay
+    const order = await Order.create({
+      patientId,
+      pharmacyId: pharmacyData.pharmacyId,
+      ownerId: pharmacyData.ownerId,
+      items: orderItems,
+      subtotal: orderSubtotal,
+      tax,
+      shipping: initialShipping,
+      initialShipping: initialShipping,
+      total: initialTotal,
+      initialTotal: initialTotal,
+      shippingAddress: shippingAddress || {},
+      paymentMethod: null,
+      status: 'PENDING',
+      paymentStatus: 'PENDING'
+    });
+
+    createdOrders.push(order);
   }
 
-  const pharmacyData = Array.from(pharmacyMap.values())[0];
-  const tax = subtotal * 0.1; // 10% tax (you can make this configurable)
-  const initialShipping = shippingAddress ? 10 : 0; // Initial shipping estimate (doctor will set final)
-  const initialTotal = subtotal + tax + initialShipping;
-
-  // Create order with PENDING status (no payment yet)
-  // Doctor will set final shipping fee, then patient will pay
-  // IMPORTANT: Always set status and paymentStatus to PENDING, regardless of what might be passed
-  const order = await Order.create({
-    patientId,
-    pharmacyId: pharmacyData.pharmacyId,
-    ownerId: pharmacyData.ownerId,
-    items: orderItems,
-    subtotal,
-    tax,
-    shipping: initialShipping, // Initial shipping estimate
-    initialShipping: initialShipping, // Store initial estimate
-    total: initialTotal, // Initial total (will be updated when doctor sets shipping)
-    initialTotal: initialTotal, // Store initial total
-    shippingAddress: shippingAddress || {},
-    paymentMethod: null, // Will be set when patient pays (ignore any passed value)
-    status: 'PENDING', // Order is pending until doctor sets shipping and patient pays (always PENDING)
-    paymentStatus: 'PENDING' // Payment will happen after doctor sets shipping fee (always PENDING)
-  });
-
-  // DO NOT process payment here - patient will pay after doctor sets shipping fee
-  // DO NOT reduce stock here - stock will be reduced after payment
-  // DO NOT credit balance here - balance will be credited after payment
-
-  return order;
+  return createdOrders.length === 1 ? createdOrders[0] : { orders: createdOrders };
 };
 
 /**
@@ -399,7 +384,7 @@ const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
  * @param {string} paymentMethod - Payment method
  * @returns {Promise<Object>} Updated order
  */
-const payForOrder = async (orderId, userId, userRole, paymentMethod = 'DUMMY') => {
+const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') => {
   const balanceService = require('./balance.service');
   
   const order = await Order.findById(orderId)
@@ -424,6 +409,10 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'DUMMY') =
     throw new Error('Shipping fee must be set by the pharmacy owner before payment');
   }
 
+  if (paymentMethod && String(paymentMethod).toUpperCase() !== 'STRIPE') {
+    throw new Error('Only STRIPE payment method is supported');
+  }
+
   // Create transaction
   const transaction = await Transaction.create({
     userId: order.patientId,
@@ -431,14 +420,14 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'DUMMY') =
     currency: 'EUR',
     relatedOrderId: orderId,
     status: 'SUCCESS',
-    provider: paymentMethod,
+    provider: 'STRIPE',
     providerReference: `ORD-${Date.now()}-${orderId}`
   });
 
   // Update order
   order.paymentStatus = 'PAID';
   order.status = 'CONFIRMED';
-  order.paymentMethod = paymentMethod;
+  order.paymentMethod = 'STRIPE';
   order.transactionId = transaction._id;
   await order.save();
 

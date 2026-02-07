@@ -19,7 +19,7 @@ const createOrderValidator = z.object({
       country: z.string().min(1, "Country is required"),
       zip: z.string().min(1, "ZIP code is required")
     }).optional().nullable(),
-    paymentMethod: z.string().optional().nullable()
+    paymentMethod: z.enum(['STRIPE']).optional().nullable()
   })
 });
 
@@ -76,7 +76,7 @@ const updateShippingFeeValidator = z.object({
  */
 const payForOrderValidator = z.object({
   body: z.object({
-    paymentMethod: z.string().optional()
+    paymentMethod: z.enum(['STRIPE']).optional()
   }),
   params: z.object({
     id: z.string().min(1, "Order ID is required")
