@@ -145,7 +145,7 @@ const createAppointment = async (data) => {
 
   // Calculate timezone offset if not provided (in minutes)
   let tzOffset = timezoneOffset;
-  if (!tzOffset && timezone) {
+  if ((tzOffset === null || tzOffset === undefined) && timezone) {
     // Try to extract offset from timezone string (e.g., "UTC+5" -> 300 minutes)
     const tzMatch = timezone.match(/UTC([+-])(\d+)/);
     if (tzMatch) {
@@ -156,7 +156,7 @@ const createAppointment = async (data) => {
   }
   
   // If still no offset, try to get from current date (fallback)
-  if (!tzOffset) {
+  if (tzOffset === null || tzOffset === undefined) {
     const testDate = new Date();
     tzOffset = -testDate.getTimezoneOffset(); // JavaScript offset is opposite of standard
   }

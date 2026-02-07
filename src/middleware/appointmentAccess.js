@@ -200,22 +200,7 @@ const isWithinAppointmentWindow = (appointment) => {
   
   if (appointment.timezoneOffset !== null && appointment.timezoneOffset !== undefined) {
     tzOffsetMinutes = appointment.timezoneOffset;
-    
-    // CRITICAL FIX: Detect and correct wrong timezone offsets
-    // If stored offset is UTC+1 (60 minutes), it's likely wrong for Pakistan users (should be UTC+5 = 300 minutes)
-    // This happens when appointments were created before timezone support or with incorrect fallback
-    // Check for both morning and afternoon/evening appointments
-    if (tzOffsetMinutes === 60) {
-      // UTC+1 is likely wrong - most users are in Pakistan (UTC+5)
-      // Correct to UTC+5 (300 minutes) for all appointment times
-      console.log('⚠️ [Window Check] DETECTED WRONG TIMEZONE OFFSET!');
-      console.log('⚠️ [Window Check] Stored offset:', tzOffsetMinutes, 'minutes (UTC+1)');
-      console.log('⚠️ [Window Check] Appointment time:', startHours + ':' + startMinutes.toString().padStart(2, '0'));
-      console.log('⚠️ [Window Check] Correcting to UTC+5 (300 minutes) for Pakistan timezone');
-      tzOffsetMinutes = 300; // Override with correct UTC+5 offset
-    } else {
-      console.log('✅ [Window Check] Using stored timezone offset:', tzOffsetMinutes, 'minutes (UTC' + (tzOffsetMinutes >= 0 ? '+' : '') + Math.floor(tzOffsetMinutes / 60) + ')');
-    }
+    console.log('✅ [Window Check] Using stored timezone offset:', tzOffsetMinutes, 'minutes (UTC' + (tzOffsetMinutes >= 0 ? '+' : '') + Math.floor(tzOffsetMinutes / 60) + ')');
   } else {
     // CRITICAL FIX: For old appointments without timezone, the appointment time was likely
     // created in the user's local timezone (Pakistan UTC+5), but stored without timezone info
