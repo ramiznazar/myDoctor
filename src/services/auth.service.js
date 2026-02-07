@@ -5,6 +5,7 @@ const Specialization = require('../models/specialization.model');
 const PasswordReset = require('../models/passwordReset.model');
 const { generateToken } = require('../utils/jwt');
 const { sendPasswordResetOTP, sendPasswordResetSuccess } = require('./email.service');
+const { sendPhoneOtp, verifyPhoneOtp } = require('./twilioVerify.service');
 
 /**
  * Register a new user (DOCTOR or PATIENT)
@@ -14,6 +15,19 @@ const { sendPasswordResetOTP, sendPasswordResetSuccess } = require('./email.serv
 const registerUser = async (data) => {
   const { email, password, fullName, role, phone, gender, dob, profileImage, specializationId } = data;
 
+  const normalizedRole = String(role || '').toUpperCase();
+  const isPharmacyRegistration = normalizedRole === 'PHARMACY' || normalizedRole === 'PARAPHARMACY';
+
+  if (isPharmacyRegistration) {
+    if (!phone || !String(phone).trim()) {
+      throw new Error('Phone number is required for pharmacy registration');
+    }
+    const trimmedPhone = String(phone).trim();
+    if (!/^\+\d{7,15}$/.test(trimmedPhone)) {
+      throw new Error('Phone number must be in international format (E.164), e.g. +1234567890');
+    }
+  }
+
   // Check if email already exists
   const existingUser = await User.findOne({ email: email.toLowerCase() });
   if (existingUser) {
@@ -22,23 +36,32 @@ const registerUser = async (data) => {
 
   // Determine default status based on role
   // Patients are auto-approved, Doctors/Pharmacies need admin approval
-  const defaultStatus = role.toUpperCase() === 'PATIENT' ? 'APPROVED' : 'PENDING';
+  const defaultStatus = normalizedRole === 'PATIENT' ? 'APPROVED' : 'PENDING';
 
   // Create user (password will be hashed by pre-save hook in user.model.js)
   const user = await User.create({
     email: email.toLowerCase(),
     password: password, // Pre-save hook will hash this
     fullName,
-    role: role.toUpperCase(),
-    phone,
+    role: normalizedRole,
+    phone: phone ? String(phone).trim() : phone,
     gender,
     dob: dob ? new Date(dob) : null,
     profileImage,
     status: defaultStatus
   });
 
+  if (isPharmacyRegistration) {
+    try {
+      await sendPhoneOtp(String(user.phone).trim());
+    } catch (error) {
+      await User.deleteOne({ _id: user._id });
+      throw new Error(error?.message || 'Failed to send verification code');
+    }
+  }
+
   // If user is DOCTOR, create empty DoctorProfile if none exists
-  if (role.toUpperCase() === 'DOCTOR' && specializationId) {
+  if (normalizedRole === 'DOCTOR' && specializationId) {
     // Verify specialization exists (doctors can only select from admin-created specializations)
     const specialization = await Specialization.findById(specializationId);
     if (!specialization) {
@@ -68,6 +91,76 @@ const registerUser = async (data) => {
   return {
     user: userObj,
     token
+  };
+};
+
+const sendPhoneOtpForUser = async (userId, phone = null) => {
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  const role = String(user.role || '').toUpperCase();
+  if (role !== 'PHARMACY' && role !== 'PARAPHARMACY') {
+    throw new Error('Phone verification is only available for pharmacy accounts');
+  }
+
+  const targetPhone = String(phone || user.phone || '').trim();
+  if (!targetPhone) {
+    throw new Error('Phone is required');
+  }
+  if (!/^\+\d{7,15}$/.test(targetPhone)) {
+    throw new Error('Phone number must be in international format (E.164), e.g. +1234567890');
+  }
+
+  // If user is missing phone, store it
+  if (!user.phone || String(user.phone).trim() !== targetPhone) {
+    user.phone = targetPhone;
+    await user.save();
+  }
+
+  const result = await sendPhoneOtp(targetPhone);
+  return {
+    status: result.status
+  };
+};
+
+const verifyPhoneOtpForUser = async (userId, code, phone = null) => {
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  const role = String(user.role || '').toUpperCase();
+  if (role !== 'PHARMACY' && role !== 'PARAPHARMACY') {
+    throw new Error('Phone verification is only available for pharmacy accounts');
+  }
+
+  const targetPhone = String(phone || user.phone || '').trim();
+  if (!targetPhone) {
+    throw new Error('Phone is required');
+  }
+  if (!/^\+\d{7,15}$/.test(targetPhone)) {
+    throw new Error('Phone number must be in international format (E.164), e.g. +1234567890');
+  }
+
+  const result = await verifyPhoneOtp(targetPhone, String(code));
+  const isApproved = String(result.status || '').toLowerCase() === 'approved';
+
+  if (!isApproved) {
+    throw new Error('Invalid verification code');
+  }
+
+  user.isPhoneVerified = true;
+  user.phone = targetPhone;
+  await user.save();
+
+  const userObj = user.toObject();
+  delete userObj.password;
+
+  return {
+    verified: true,
+    user: userObj
   };
 };
 
@@ -395,5 +488,7 @@ module.exports = {
   refreshToken,
   requestPasswordReset,
   verifyPasswordResetCode,
-  resetPassword
+  resetPassword,
+  sendPhoneOtpForUser,
+  verifyPhoneOtpForUser
 };

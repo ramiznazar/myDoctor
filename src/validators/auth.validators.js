@@ -93,6 +93,19 @@ const resetPasswordValidator = z.object({
   })
 });
 
+const sendPhoneOtpValidator = z.object({
+  body: z.object({
+    phone: z.string().optional()
+  }).optional()
+});
+
+const verifyPhoneOtpValidator = z.object({
+  body: z.object({
+    code: z.string().min(4, 'Verification code is required').max(10).regex(/^\d+$/, 'Verification code must contain only digits'),
+    phone: z.string().optional()
+  })
+});
+
 module.exports = {
   registerValidator,
   loginValidator,
@@ -102,5 +115,7 @@ module.exports = {
   refreshTokenValidator,
   requestPasswordResetValidator,
   verifyPasswordResetCodeValidator,
-  resetPasswordValidator
+  resetPasswordValidator,
+  sendPhoneOtpValidator,
+  verifyPhoneOtpValidator
 };

@@ -51,6 +51,10 @@ module.exports = {
   STREAM_API_KEY: process.env.STREAM_API_KEY,
   STREAM_API_SECRET: process.env.STREAM_API_SECRET,
 
+  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+  TWILIO_VERIFY_SERVICE_SID: process.env.TWILIO_VERIFY_SERVICE_SID,
+
   // CRM API Key for external CRM integration
   CRM_API_KEY: process.env.CRM_API_KEY,
 

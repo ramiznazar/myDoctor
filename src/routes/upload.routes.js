@@ -3,6 +3,7 @@ const router = express.Router();
 const { uploadSingleImage, uploadMultipleImages, uploadSingleChatFile, uploadMultipleChatFiles } = require('../middleware/upload.middleware');
 const uploadController = require('../controllers/upload.controller');
 const authGuard = require('../middleware/authGuard');
+const requirePhoneVerified = require('../middleware/requirePhoneVerified');
 const asyncHandler = require('../middleware/asyncHandler');
 
 /**
@@ -32,6 +33,7 @@ router.post(
 router.post(
   '/pharmacy-docs',
   authGuard(['PHARMACY', 'PARAPHARMACY']),
+  requirePhoneVerified(),
   uploadMultipleChatFiles('pharmacyDocs', 10),
   asyncHandler(uploadController.uploadMultipleFiles)
 );

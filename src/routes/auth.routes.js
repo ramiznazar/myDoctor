@@ -10,7 +10,9 @@ const {
   refreshTokenValidator,
   requestPasswordResetValidator,
   verifyPasswordResetCodeValidator,
-  resetPasswordValidator
+  resetPasswordValidator,
+  sendPhoneOtpValidator,
+  verifyPhoneOtpValidator
 } = require('../validators/auth.validators');
 const validate = require('../middleware/validate');
 const authGuard = require('../middleware/authGuard');
@@ -25,6 +27,20 @@ router.post(
   '/register',
   validate(registerValidator),
   asyncHandler(authController.register)
+);
+
+router.post(
+  '/phone-otp/send',
+  authGuard(['PHARMACY', 'PARAPHARMACY']),
+  validate(sendPhoneOtpValidator),
+  asyncHandler(authController.sendPhoneOtp)
+);
+
+router.post(
+  '/phone-otp/verify',
+  authGuard(['PHARMACY', 'PARAPHARMACY']),
+  validate(verifyPhoneOtpValidator),
+  asyncHandler(authController.verifyPhoneOtp)
 );
 
 /**

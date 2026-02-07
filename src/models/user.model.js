@@ -22,6 +22,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  isPhoneVerified: {
+    type: Boolean,
+    default: false
+  },
   password: {
     type: String,
     select: false,

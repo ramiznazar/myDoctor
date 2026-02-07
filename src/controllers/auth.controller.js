@@ -83,3 +83,15 @@ exports.resetPassword = asyncHandler(async (req, res) => {
   const result = await authService.resetPassword(email, code, newPassword);
   res.json({ success: true, message: result.message });
 });
+
+exports.sendPhoneOtp = asyncHandler(async (req, res) => {
+  const { phone } = req.body || {};
+  const result = await authService.sendPhoneOtpForUser(req.userId, phone);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+exports.verifyPhoneOtp = asyncHandler(async (req, res) => {
+  const { code, phone } = req.body || {};
+  const result = await authService.verifyPhoneOtpForUser(req.userId, code, phone);
+  res.json({ success: true, message: 'OK', data: result });
+});
