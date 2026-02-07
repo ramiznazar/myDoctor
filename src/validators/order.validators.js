@@ -8,7 +8,7 @@ const createOrderValidator = z.object({
     items: z.array(
       z.object({
         productId: z.string().min(1, "Product ID is required"),
-        quantity: z.number().int().positive("Quantity must be a positive integer")
+        quantity: z.coerce.number().int().positive("Quantity must be a positive integer")
       })
     ).min(1, "At least one item is required"),
     shippingAddress: z.object({
@@ -19,7 +19,7 @@ const createOrderValidator = z.object({
       country: z.string().min(1, "Country is required"),
       zip: z.string().min(1, "ZIP code is required")
     }).optional().nullable(),
-    paymentMethod: z.enum(['STRIPE']).optional().nullable()
+    paymentMethod: z.string().optional().nullable()
   })
 });
 
