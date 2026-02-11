@@ -4,6 +4,12 @@ const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
 
+const computeOrderTotal = (order) => {
+  const subtotal = Number(order?.subtotal) || 0;
+  const shipping = Number(order?.finalShipping ?? order?.shipping) || 0;
+  return subtotal + shipping;
+};
+
 /**
  * Create order from cart items
  * @param {string} patientId - Patient user ID
@@ -78,9 +84,9 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
   for (const pharmacyData of Array.from(pharmacyMap.values())) {
     const orderItems = pharmacyData.items;
     const orderSubtotal = orderItems.reduce((sum, i) => sum + (i.total || 0), 0);
-    const tax = orderSubtotal * 0.1; // 10% tax (you can make this configurable)
+    const tax = 0;
     const initialShipping = shippingAddress ? 10 : 0; // Initial shipping estimate (owner will set final)
-    const initialTotal = orderSubtotal + tax + initialShipping;
+    const initialTotal = orderSubtotal + initialShipping;
 
     // Create order with PENDING status (no payment yet)
     // Owner will set final shipping fee, then patient will pay
@@ -361,7 +367,7 @@ const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
 
   // Calculate new total
   const finalShipping = shippingFee;
-  const finalTotal = order.subtotal + order.tax + finalShipping;
+  const finalTotal = order.subtotal + finalShipping;
 
   // Update order with final shipping fee
   order.shipping = finalShipping;
@@ -409,6 +415,12 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
     throw new Error('Shipping fee must be set by the pharmacy owner before payment');
   }
 
+  // Normalize totals to avoid double-counting shipping (and keep UI consistent)
+  const computedTotal = computeOrderTotal(order);
+  if (Number(order.total) !== computedTotal) {
+    order.total = computedTotal;
+  }
+
   if (paymentMethod && String(paymentMethod).toUpperCase() !== 'STRIPE') {
     throw new Error('Only STRIPE payment method is supported');
   }
@@ -416,7 +428,7 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
   // Create transaction
   const transaction = await Transaction.create({
     userId: order.patientId,
-    amount: order.total,
+    amount: computedTotal,
     currency: 'EUR',
     relatedOrderId: orderId,
     status: 'SUCCESS',
@@ -447,7 +459,7 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
   try {
     await balanceService.creditBalance(
       order.ownerId._id.toString(),
-      order.total,
+      computedTotal,
       'PRODUCT',
       {
         orderId: order._id.toString(),
@@ -456,9 +468,9 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
       }
     );
   } catch (error) {
-    console.error('Error crediting seller balance:', error);
-    // Log error but don't fail the payment - balance can be credited later
+    console.error('Error crediting seller balance for order:', error);
   }
+  // Log error but don't fail the payment - balance can be credited later
 
   return order;
 };
