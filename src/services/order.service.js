@@ -4,12 +4,6 @@ const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
 
-const computeOrderTotal = (order) => {
-  const subtotal = Number(order?.subtotal) || 0;
-  const shipping = Number(order?.finalShipping ?? order?.shipping) || 0;
-  return subtotal + shipping;
-};
-
 /**
  * Create order from cart items
  * @param {string} patientId - Patient user ID
@@ -415,15 +409,18 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
     throw new Error('Shipping fee must be set by the pharmacy owner before payment');
   }
 
-  // Normalize totals to avoid double-counting shipping (and keep UI consistent)
-  const computedTotal = computeOrderTotal(order);
-  if (Number(order.total) !== computedTotal) {
-    order.total = computedTotal;
-  }
-
   if (paymentMethod && String(paymentMethod).toUpperCase() !== 'STRIPE') {
     throw new Error('Only STRIPE payment method is supported');
   }
+
+  const normalizedSubtotal = Number(order.subtotal) || 0;
+  const normalizedShipping = Number(order.finalShipping ?? order.shipping) || 0;
+  const computedTotal = normalizedSubtotal + normalizedShipping;
+
+  order.tax = 0;
+  order.shipping = normalizedShipping;
+  order.finalShipping = normalizedShipping;
+  order.total = computedTotal;
 
   // Create transaction
   const transaction = await Transaction.create({
@@ -468,9 +465,9 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
       }
     );
   } catch (error) {
-    console.error('Error crediting seller balance for order:', error);
+    console.error('Error crediting seller balance:', error);
+    // Log error but don't fail the payment - balance can be credited later
   }
-  // Log error but don't fail the payment - balance can be credited later
 
   return order;
 };
