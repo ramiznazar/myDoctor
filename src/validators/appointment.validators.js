@@ -11,7 +11,12 @@ const createAppointmentValidator = z.object({
     appointmentTime: z.string().min(1, "Appointment time is required"), // "10:30"
     bookingType: z.enum(["VISIT", "ONLINE"]).optional(),
     patientNotes: z.string().optional(),
-    clinicName: z.string().optional()
+    clinicName: z.string().optional(),
+    timezone: z.string().optional(),
+    timezoneOffset: z.union([
+      z.number(),
+      z.string().regex(/^-?\d+$/).transform(Number)
+    ]).optional()
   })
 });
 
