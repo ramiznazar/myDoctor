@@ -1,6 +1,20 @@
 const Appointment = require('../models/appointment.model');
 const asyncHandler = require('./asyncHandler');
 
+const isPakistanUser = (user) => {
+  if (!user || typeof user !== 'object') return false;
+  const country = String(user?.address?.country || '').toLowerCase();
+  const phone = String(user?.phone || '');
+  return country.includes('pakistan') || country === 'pk' || phone.startsWith('+92');
+};
+
+const formatWithOffset = (dateUTC, offsetMinutes) => {
+  if (!(dateUTC instanceof Date) || typeof offsetMinutes !== 'number' || Number.isNaN(offsetMinutes)) {
+    return null;
+  }
+  return new Date(dateUTC.getTime() + offsetMinutes * 60 * 1000).toUTCString();
+};
+
 /**
  * Parse appointment date to get year, month, day components
  * CRITICAL: Handles timezone issues by always using local date components
@@ -232,6 +246,27 @@ const isWithinAppointmentWindow = (appointment) => {
     tzOffsetMinutes = 300; // Default to UTC+5 (Pakistan) as fallback
     console.log('⚠️ [Window Check] Invalid timezone offset, defaulting to UTC+5 (Pakistan)');
   }
+
+  if (
+    tzOffsetMinutes === 60 &&
+    !appointment.timezone &&
+    (isPakistanUser(appointment.patientId) || isPakistanUser(appointment.doctorId))
+  ) {
+    tzOffsetMinutes = 300;
+    console.log('⚠️ [Window Check] Overriding timezone offset to UTC+5 based on user country/phone');
+  }
+
+  if (typeof appointment.timezone === 'string') {
+    const tzMatch = appointment.timezone.match(/UTC([+-])(\d+)/);
+    if (tzMatch) {
+      const sign = tzMatch[1];
+      const expected = (sign === '+' ? 1 : -1) * parseInt(tzMatch[2], 10) * 60;
+      if (typeof tzOffsetMinutes === 'number' && !Number.isNaN(expected) && tzOffsetMinutes === -expected) {
+        tzOffsetMinutes = expected;
+        console.log('⚠️ [Window Check] Normalized timezone offset sign to match timezone string');
+      }
+    }
+  }
   
   // Create appointment start datetime in UTC
   // CRITICAL: The appointment time (e.g., "17:45") is in the user's local timezone
@@ -430,9 +465,12 @@ const isWithinAppointmentWindow = (appointment) => {
     console.log(`   Difference from earliest: ${timeDiffFromEarliest.toFixed(2)} minutes (negative = before start)`);
     console.log(`   Difference from start: ${timeDiffMinutes.toFixed(2)} minutes (negative = before start)`);
     
+    const startLocal = formatWithOffset(appointmentStartDateTime, tzOffsetMinutes);
+    const endLocal = formatWithOffset(appointmentEndDateTime, tzOffsetMinutes);
+    const nowLocal = formatWithOffset(nowUTC, tzOffsetMinutes);
     return {
       isValid: false,
-      message: `Chat is only available during the scheduled appointment time window. Your appointment starts at ${appointmentStartDateTime.toUTCString()} and ends at ${appointmentEndDateTime.toUTCString()}. Current time: ${nowUTC.toUTCString()}.`,
+      message: `Chat is only available during the scheduled appointment time window. Your appointment starts at ${startLocal || appointmentStartDateTime.toUTCString()} and ends at ${endLocal || appointmentEndDateTime.toUTCString()}. Current time: ${nowLocal || nowUTC.toUTCString()}.`,
       startTime: appointmentStartDateTime,
       endTime: appointmentEndDateTime
     };
@@ -474,7 +512,9 @@ const requireAppointmentAccess = asyncHandler(async (req, res, next) => {
   }
 
   // Find appointment
-  const appointment = await Appointment.findById(appointmentId);
+  const appointment = await Appointment.findById(appointmentId)
+    .populate('doctorId', 'phone address')
+    .populate('patientId', 'phone address');
   
   if (!appointment) {
     return res.status(404).json({
@@ -485,8 +525,14 @@ const requireAppointmentAccess = asyncHandler(async (req, res, next) => {
   }
 
   // Check if user is the doctor or patient
-  const isDoctor = appointment.doctorId && appointment.doctorId.toString() === userId;
-  const isPatient = appointment.patientId && appointment.patientId.toString() === userId;
+  const doctorIdStr = typeof appointment.doctorId === 'object' && appointment.doctorId !== null
+    ? appointment.doctorId._id?.toString()
+    : appointment.doctorId?.toString();
+  const patientIdStr = typeof appointment.patientId === 'object' && appointment.patientId !== null
+    ? appointment.patientId._id?.toString()
+    : appointment.patientId?.toString();
+  const isDoctor = !!doctorIdStr && doctorIdStr === userId;
+  const isPatient = !!patientIdStr && patientIdStr === userId;
 
   if (!isDoctor && !isPatient) {
     return res.status(403).json({
