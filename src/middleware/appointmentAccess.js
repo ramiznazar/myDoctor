@@ -178,24 +178,7 @@ const isWithinAppointmentWindow = (appointment) => {
   }
 
   const now = new Date();
-  
-  // Parse appointment date using helper function
-  const dateComponents = parseAppointmentDate(appointment.appointmentDate);
-  if (!dateComponents) {
-    console.error('❌ [Window Check] Failed to parse appointment date:', appointment.appointmentDate);
-    return {
-      isValid: false,
-      message: 'Invalid appointment date',
-      startTime: null,
-      endTime: null
-    };
-  }
-  
-  const { year, month, day } = dateComponents;
-  
-  // Log the parsed date components
-  console.log('📅 [Window Check] Parsed date components:', { year, month, day, appointmentDate: appointment.appointmentDate });
-  
+
   // Parse appointment time (HH:MM format)
   // CRITICAL: Use stored timezone to interpret the time correctly
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
@@ -267,6 +250,27 @@ const isWithinAppointmentWindow = (appointment) => {
       }
     }
   }
+
+  // Derive the intended calendar date in the appointment's timezone.
+  // appointment.appointmentDate is stored as a Date in Mongo (UTC internally). If it was saved as
+  // local midnight (common), the UTC date part can appear as the previous day.
+  const appointmentDateUTC = appointment.appointmentDate instanceof Date
+    ? appointment.appointmentDate
+    : new Date(appointment.appointmentDate);
+  const appointmentDateInTz = new Date(appointmentDateUTC.getTime() + tzOffsetMinutes * 60 * 1000);
+  const year = appointmentDateInTz.getUTCFullYear();
+  const month = appointmentDateInTz.getUTCMonth();
+  const day = appointmentDateInTz.getUTCDate();
+
+  console.log('📅 [Window Check] Calendar date derived with offset:', {
+    appointmentDateRaw: appointment.appointmentDate,
+    timezoneOffset: tzOffsetMinutes,
+    appointmentDateUTC: appointmentDateUTC.toISOString(),
+    appointmentDateInTz: appointmentDateInTz.toISOString(),
+    year,
+    month: month + 1,
+    day
+  });
   
   // Create appointment start datetime in UTC
   // CRITICAL: The appointment time (e.g., "17:45") is in the user's local timezone

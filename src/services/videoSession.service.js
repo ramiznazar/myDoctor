@@ -49,16 +49,8 @@ const startSession = async (appointmentId, userId, userName) => {
   }
 
   // Calculate appointment time window (start and end)
-  // Use the same timezone logic as appointmentAccess middleware
-  const { parseAppointmentDate } = require('../middleware/appointmentAccess');
-  const dateComponents = parseAppointmentDate(appointment.appointmentDate);
-  
-  if (!dateComponents) {
-    throw new Error('Invalid appointment date');
-  }
-  
-  const { year, month, day } = dateComponents;
-  
+  // Use timezone offset to derive the intended appointment calendar date.
+
   // Parse appointment time (HH:MM format)
   const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
   
@@ -81,6 +73,15 @@ const startSession = async (appointmentId, userId, userName) => {
     tzOffsetMinutes = 300; // Default to UTC+5 (Pakistan)
     console.log('⚠️ [Video Session] Invalid timezone offset, defaulting to UTC+5 (Pakistan)');
   }
+
+  // Derive appointment calendar date in its timezone to avoid previous-day shifts.
+  const appointmentDateUTC = appointment.appointmentDate instanceof Date
+    ? appointment.appointmentDate
+    : new Date(appointment.appointmentDate);
+  const appointmentDateInTz = new Date(appointmentDateUTC.getTime() + tzOffsetMinutes * 60 * 1000);
+  const year = appointmentDateInTz.getUTCFullYear();
+  const month = appointmentDateInTz.getUTCMonth();
+  const day = appointmentDateInTz.getUTCDate();
   
   // Create appointment start datetime in UTC, then adjust for timezone
   const appointmentStartDateTimeUTC = new Date(Date.UTC(year, month, day, startHours, startMinutes, 0, 0));

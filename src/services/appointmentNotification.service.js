@@ -29,14 +29,6 @@ const sendAppointmentTimeNotifications = async () => {
 
   for (const appointment of appointments) {
     try {
-      // Parse appointment date using the same helper as video call validation
-      const dateComponents = parseAppointmentDate(appointment.appointmentDate);
-      if (!dateComponents) {
-        console.log('⚠️ [Notification] Could not parse appointment date for appointment:', appointment._id);
-        continue;
-      }
-      
-      const { year, month, day } = dateComponents;
       const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
       
       // Get timezone offset (same logic as video call validation)
@@ -53,6 +45,15 @@ const sendAppointmentTimeNotifications = async () => {
         // Default to UTC+5 (Pakistan) for appointments without timezone
         tzOffsetMinutes = 300;
       }
+
+      // Derive appointment calendar date in its timezone to avoid previous-day shifts.
+      const appointmentDateUTC = appointment.appointmentDate instanceof Date
+        ? appointment.appointmentDate
+        : new Date(appointment.appointmentDate);
+      const appointmentDateInTz = new Date(appointmentDateUTC.getTime() + tzOffsetMinutes * 60 * 1000);
+      const year = appointmentDateInTz.getUTCFullYear();
+      const month = appointmentDateInTz.getUTCMonth();
+      const day = appointmentDateInTz.getUTCDate();
       
       // Convert appointment time to UTC (same logic as video call validation)
       const appointmentStartDateTimeUTC = new Date(Date.UTC(year, month, day, startHours, startMinutes, 0, 0));
@@ -148,8 +149,6 @@ const sendUpcomingAppointmentNotifications = async () => {
         console.log('⚠️ [Notification] Could not parse appointment date for appointment:', appointment._id);
         continue;
       }
-      
-      const { year, month, day } = dateComponents;
       const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
       
       // Get timezone offset (same logic as video call validation)
@@ -166,6 +165,15 @@ const sendUpcomingAppointmentNotifications = async () => {
         // Default to UTC+5 (Pakistan) for appointments without timezone
         tzOffsetMinutes = 300;
       }
+
+      // Derive appointment calendar date in its timezone to avoid previous-day shifts.
+      const appointmentDateUTC = appointment.appointmentDate instanceof Date
+        ? appointment.appointmentDate
+        : new Date(appointment.appointmentDate);
+      const appointmentDateInTz = new Date(appointmentDateUTC.getTime() + tzOffsetMinutes * 60 * 1000);
+      const year = appointmentDateInTz.getUTCFullYear();
+      const month = appointmentDateInTz.getUTCMonth();
+      const day = appointmentDateInTz.getUTCDate();
       
       // Convert appointment time to UTC (same logic as video call validation)
       const appointmentStartDateTimeUTC = new Date(Date.UTC(year, month, day, startHours, startMinutes, 0, 0));
