@@ -8,6 +8,7 @@ const createOrderValidator = z.object({
     items: z.array(
       z.object({
         productId: z.string().min(1, "Product ID is required"),
+        variantId: z.string().optional().nullable(),
         quantity: z.coerce.number().int().positive("Quantity must be a positive integer")
       })
     ).min(1, "At least one item is required"),
@@ -18,7 +19,7 @@ const createOrderValidator = z.object({
       state: z.string().min(1, "State is required"),
       country: z.string().min(1, "Country is required"),
       zip: z.string().min(1, "ZIP code is required")
-    }).optional().nullable(),
+    }),
     paymentMethod: z.string().optional().nullable()
   })
 });
@@ -64,7 +65,8 @@ const getOrderByIdValidator = z.object({
  */
 const updateShippingFeeValidator = z.object({
   body: z.object({
-    shippingFee: z.number().nonnegative("Shipping fee must be non-negative")
+    shippingFee: z.coerce.number().nonnegative("Shipping fee must be non-negative"),
+    deliveryDays: z.coerce.number().int().min(1).max(60).optional().nullable()
   }),
   params: z.object({
     id: z.string().min(1, "Order ID is required")

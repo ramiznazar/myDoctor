@@ -45,6 +45,12 @@ router.get(
   asyncHandler(pharmacyController.getMyPharmacy)
 );
 
+router.get(
+  '/setup-status',
+  authGuard(['PHARMACY', 'PARAPHARMACY']),
+  asyncHandler(pharmacyController.getSetupStatus)
+);
+
 /**
  * @route   POST /api/pharmacy/buy-subscription
  * @desc    Pharmacy buys a subscription plan

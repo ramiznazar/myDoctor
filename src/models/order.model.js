@@ -6,6 +6,24 @@ const orderItemSchema = new mongoose.Schema({
     ref: "Product",
     required: true
   },
+  variantId: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null
+  },
+  variantName: {
+    type: String,
+    default: null
+  },
+  variantSnapshot: {
+    strengthValue: { type: Number, default: null },
+    strengthUnit: { type: String, default: null },
+    dosageForm: { type: String, default: null },
+    packageType: { type: String, default: null },
+    unitsPerPack: { type: Number, default: null },
+    unitLabel: { type: String, default: null },
+    packageDescription: { type: String, default: null },
+    sku: { type: String, default: null }
+  },
   quantity: {
     type: Number,
     required: true,
@@ -70,6 +88,24 @@ const orderSchema = new mongoose.Schema({
   shippingUpdatedAt: {
     type: Date,
     default: null // When shipping fee was updated
+  },
+  requestedAt: { type: Date, default: Date.now },
+  pharmacyAcceptedAt: { type: Date, default: null },
+  shippingFeeAddedAt: { type: Date, default: null },
+  customerPaidAt: { type: Date, default: null },
+  promisedDeliveryDays: { type: Number, default: null, min: 1, max: 60 },
+  expectedDeliveryDate: { type: Date, default: null },
+  actualDeliveredAt: { type: Date, default: null },
+  totalActualDeliveryDays: { type: Number, default: null },
+  deliveryStatus: {
+    type: String,
+    enum: ['AWAITING_DELIVERY', 'ON_TIME', 'DELIVERED', 'LATE'],
+    default: 'AWAITING_DELIVERY'
+  },
+  deliveryPerformance: {
+    type: String,
+    enum: ['PENDING', 'ON_TIME', 'LATE'],
+    default: 'PENDING'
   },
   total: {
     type: Number,
@@ -177,6 +213,7 @@ orderSchema.index({ patientId: 1, patientReadAt: 1 });
 orderSchema.index({ pharmacyId: 1, createdAt: -1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ orderNumber: 1 });
+orderSchema.index({ ownerId: 1, expectedDeliveryDate: 1 });
 
 module.exports = mongoose.model("Order", orderSchema);
 

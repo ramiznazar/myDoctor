@@ -85,3 +85,18 @@ exports.markConversationComplete = asyncHandler(async (req, res) => {
   const result = await chatService.markConversationComplete(req.params.conversationId, req.userId);
   res.json({ success: true, message: 'Conversation marked as completed', data: result });
 });
+
+exports.getOrCreateAdminSupportConversation = asyncHandler(async (req, res) => {
+  const result = await chatService.getOrCreateAdminSupportConversation(req.userId, req.userRole, req.body?.userId);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+exports.sendAdminSupportMessage = asyncHandler(async (req, res) => {
+  const result = await chatService.sendAdminSupportMessage({
+    conversationId: req.params.conversationId,
+    senderId: req.userId,
+    message: req.body?.message,
+    attachments: req.body?.attachments,
+  });
+  res.json({ success: true, message: 'OK', data: result });
+});

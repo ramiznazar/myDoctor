@@ -46,6 +46,46 @@ const getPublicApiKey = () => config.STREAM_API_KEY || null;
 const isConfigured = () => Boolean(streamClient && config.STREAM_API_KEY);
 
 /**
+ * Stream Video validates every member passed to `call.getOrCreate`.  A token
+ * alone is not enough: each account must first exist in Stream's user store.
+ * Provisioning both appointment participants on our trusted server prevents
+ * a browser from attempting to create a call with an unknown remote user.
+ */
+const upsertUsers = async (users = []) => {
+  if (!streamClient) {
+    const error = new Error('Video calling is not configured. Please contact support.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const normalizedUsers = users
+    .map((user) => {
+      const id = String(user?._id || user?.id || '').trim();
+      if (!id) return null;
+      return {
+        id,
+        name: String(user?.fullName || user?.name || user?.email || 'My Doctor user').trim(),
+        image: user?.profileImage || undefined,
+        role: String(user?.role || 'user').toLowerCase(),
+      };
+    })
+    .filter(Boolean);
+
+  if (!normalizedUsers.length) return [];
+
+  try {
+    // `upsertUsers` is idempotent, so this also safely repairs accounts that
+    // were created before Stream provisioning existed.
+    await streamClient.upsertUsers(normalizedUsers);
+    return normalizedUsers;
+  } catch (cause) {
+    const error = new Error(`Unable to provision video-call participants: ${cause.message}`);
+    error.statusCode = 502;
+    throw error;
+  }
+};
+
+/**
  * Create a Stream call
  * Note: We don't create calls on backend - frontend creates them
  * This function is kept for compatibility but returns null
@@ -90,5 +130,6 @@ module.exports = {
   getCall,
   endCall,
   isConfigured,
+  upsertUsers,
 };
 

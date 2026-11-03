@@ -27,6 +27,20 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     throw new Error('Order items are required');
   }
 
+  const normalizedAddress = {
+    line1: String(shippingAddress?.line1 || '').trim(),
+    line2: String(shippingAddress?.line2 || '').trim() || null,
+    city: String(shippingAddress?.city || '').trim(),
+    state: String(shippingAddress?.state || '').trim(),
+    country: String(shippingAddress?.country || '').trim(),
+    zip: String(shippingAddress?.zip || '').trim(),
+  };
+  if (![normalizedAddress.line1, normalizedAddress.city, normalizedAddress.state, normalizedAddress.country, normalizedAddress.zip].every(Boolean)) {
+    const error = new Error('A complete delivery address is required before checkout');
+    error.statusCode = 400;
+    throw error;
+  }
+
   // Verify patient exists
   const patient = await User.findById(patientId);
   if (!patient || patient.role !== 'PATIENT') {
@@ -41,9 +55,10 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     throw new Error('One or more products not found');
   }
 
-  // Group products by pharmacy/owner
+  // Group products by pharmacy/owner. Prices, variant attributes and shipping
+  // commitments are snapshotted in the order so later product edits cannot
+  // change an order a patient has already reviewed.
   const pharmacyMap = new Map();
-  let subtotal = 0;
 
   for (const item of items) {
     const product = products.find(p => p._id.toString() === item.productId.toString());
@@ -51,9 +66,23 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
       throw new Error(`Product ${item.productId} not found`);
     }
 
-    // Check stock
-    if (product.stock < item.quantity) {
-      throw new Error(`Insufficient stock for product ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`);
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const selectedVariant = item.variantId
+      ? variants.find((variant) => String(variant._id) === String(item.variantId))
+      : (variants.find((variant) => variant.isDefault) || variants[0] || null);
+    if (item.variantId && !selectedVariant) throw new Error(`Selected variant is no longer available for ${product.name}`);
+    if (selectedVariant?.isActive === false) throw new Error(`Selected variant is no longer available for ${product.name}`);
+    const availableStock = selectedVariant ? selectedVariant.stock : product.stock;
+    if (availableStock < item.quantity) throw new Error(`Insufficient stock for product ${product.name}. Available: ${availableStock}, requested: ${item.quantity}`);
+
+    if (product.requiresPrescription) {
+      const prescriptionService = require('./productPrescriptionRequest.service');
+      const approved = await prescriptionService.hasApprovedPrescription(patientId, product._id, selectedVariant?._id || null);
+      if (!approved) {
+        const error = new Error(`An approved prescription is required before purchasing ${product.name}`);
+        error.statusCode = 403;
+        throw error;
+      }
     }
 
     // Get pharmacy for this product
@@ -67,19 +96,31 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
       pharmacyMap.set(pharmacyId, {
         pharmacyId: pharmacy._id,
         ownerId: pharmacy.ownerId,
-        items: []
+        items: [],
+        shippingSettings: pharmacy.shippingSettings || {}
       });
     }
 
-    const itemPrice = product.discountPrice || product.price;
+    const itemPrice = selectedVariant ? (selectedVariant.discountPrice ?? selectedVariant.price) : (product.discountPrice ?? product.price);
     const itemTotal = itemPrice * item.quantity;
-    subtotal += itemTotal;
 
     pharmacyMap.get(pharmacyId).items.push({
       productId: product._id,
+      variantId: selectedVariant?._id || null,
+      variantName: selectedVariant?.name || null,
+      variantSnapshot: selectedVariant ? {
+        strengthValue: selectedVariant.strengthValue ?? null,
+        strengthUnit: selectedVariant.strengthUnit ?? null,
+        dosageForm: selectedVariant.dosageForm ?? null,
+        packageType: selectedVariant.packageType ?? null,
+        unitsPerPack: selectedVariant.unitsPerPack ?? null,
+        unitLabel: selectedVariant.unitLabel ?? null,
+        packageDescription: selectedVariant.packageDescription ?? null,
+        sku: selectedVariant.sku ?? null,
+      } : {},
       quantity: item.quantity,
-      price: product.price,
-      discountPrice: product.discountPrice,
+      price: selectedVariant?.price ?? product.price,
+      discountPrice: selectedVariant?.discountPrice ?? product.discountPrice,
       total: itemTotal
     });
   }
@@ -89,7 +130,11 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     const orderItems = pharmacyData.items;
     const orderSubtotal = orderItems.reduce((sum, i) => sum + (i.total || 0), 0);
     const tax = 0;
-    const initialShipping = shippingAddress ? 10 : 0; // Initial shipping estimate (owner will set final)
+    const initialShipping = Number(pharmacyData.shippingSettings?.fee || 0);
+    const promisedDeliveryDays = pharmacyData.shippingSettings?.deliveryDays ? Number(pharmacyData.shippingSettings.deliveryDays) : null;
+    const expectedDeliveryDate = promisedDeliveryDays
+      ? new Date(Date.now() + promisedDeliveryDays * 24 * 60 * 60 * 1000)
+      : null;
     const initialTotal = orderSubtotal + initialShipping;
 
     // Create order with PENDING status (no payment yet)
@@ -103,9 +148,14 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
       tax,
       shipping: initialShipping,
       initialShipping: initialShipping,
+      finalShipping: initialShipping,
+      shippingUpdatedAt: new Date(),
+      shippingFeeAddedAt: new Date(),
+      promisedDeliveryDays,
+      expectedDeliveryDate,
       total: initialTotal,
       initialTotal: initialTotal,
-      shippingAddress: shippingAddress || {},
+      shippingAddress: normalizedAddress,
       paymentMethod: null,
       status: 'PENDING',
       paymentStatus: 'PENDING',
@@ -118,7 +168,7 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     await notify(
       pharmacyData.ownerId,
       'New order received',
-      `A new order (${order.orderNumber}) needs your shipping quote.`,
+      `A new order (${order.orderNumber}) was placed with your delivery commitment.`,
       { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'ORDER_CREATED' }
     );
   }
@@ -365,6 +415,11 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
   // Set deliveredAt when status is DELIVERED
   if (status.toUpperCase() === 'DELIVERED') {
     order.deliveredAt = new Date();
+    order.actualDeliveredAt = order.deliveredAt;
+    order.totalActualDeliveryDays = Math.max(0, Math.ceil((order.actualDeliveredAt - (order.customerPaidAt || order.createdAt)) / (24 * 60 * 60 * 1000)));
+    const onTime = !order.expectedDeliveryDate || order.actualDeliveredAt <= order.expectedDeliveryDate;
+    order.deliveryStatus = onTime ? 'ON_TIME' : 'LATE';
+    order.deliveryPerformance = onTime ? 'ON_TIME' : 'LATE';
   }
 
   await order.save();
@@ -388,7 +443,7 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
  * @param {string} userRole - User role
  * @returns {Promise<Object>} Updated order
  */
-const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
+const updateShippingFee = async (orderId, shippingFee, deliveryDays, userId, userRole) => {
   const order = await Order.findById(orderId);
 
   if (!order) {
@@ -409,6 +464,9 @@ const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
   if (typeof shippingFee !== 'number' || shippingFee < 0) {
     throw new Error('Shipping fee must be a non-negative number');
   }
+  if (deliveryDays !== undefined && deliveryDays !== null && (!Number.isInteger(deliveryDays) || deliveryDays < 1 || deliveryDays > 60)) {
+    throw new Error('Delivery commitment must be a whole number between 1 and 60 days');
+  }
 
   // Calculate new total
   const finalShipping = shippingFee;
@@ -419,6 +477,11 @@ const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
   order.finalShipping = finalShipping;
   order.total = finalTotal;
   order.shippingUpdatedAt = new Date();
+  order.shippingFeeAddedAt = new Date();
+  if (deliveryDays !== undefined && deliveryDays !== null) {
+    order.promisedDeliveryDays = deliveryDays;
+    order.expectedDeliveryDate = new Date(Date.now() + deliveryDays * 24 * 60 * 60 * 1000);
+  }
   order.requiresPaymentUpdate = false; // Patient needs to pay the updated amount
   order.patientReadAt = null;
   order.ownerReadAt = new Date();
@@ -427,7 +490,7 @@ const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
   await notify(
     order.patientId,
     'Shipping fee updated',
-    `The shipping fee for order ${order.orderNumber} is ready for payment.`,
+    `Shipping and delivery details for order ${order.orderNumber} are ready for payment.`,
     { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'SHIPPING_UPDATED' }
   );
 
@@ -481,36 +544,67 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
   order.finalShipping = normalizedShipping;
   order.total = computedTotal;
 
-  // Create transaction
-  const transaction = await Transaction.create({
-    userId: order.patientId,
-    amount: computedTotal,
-    currency: 'EUR',
-    relatedOrderId: orderId,
-    status: 'SUCCESS',
-    provider: 'STRIPE',
-    providerReference: `ORD-${Date.now()}-${orderId}`
-  });
+  // Reserve stock before committing the payment record.  The previous order
+  // saved a PAID transaction first and only then noticed an out-of-stock
+  // product, which could leave a failed checkout recorded as paid.  Each
+  // update is conditional on the remaining stock so two concurrent payments
+  // cannot oversell the same option.
+  const reservedItems = [];
+  let transaction = null;
+  try {
+    for (const item of order.items) {
+      const product = item.productId;
+      if (!product) throw new Error('A product in this order is no longer available');
 
-  // Update order
-  order.paymentStatus = 'PAID';
-  order.status = 'CONFIRMED';
-  order.paymentMethod = 'STRIPE';
-  order.transactionId = transaction._id;
-  order.ownerReadAt = null;
-  order.patientReadAt = new Date();
-  await order.save();
-
-  // Reduce product stock
-  for (const item of order.items) {
-    const product = item.productId;
-    if (product) {
-      if (product.stock < item.quantity) {
-        throw new Error(`Insufficient stock for product ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`);
+      const quantity = Number(item.quantity);
+      const variantId = item.variantId ? String(item.variantId) : null;
+      const reservationQuery = variantId
+        ? {
+            _id: product._id,
+            variants: { $elemMatch: { _id: variantId, isActive: { $ne: false }, stock: { $gte: quantity } } }
+          }
+        : { _id: product._id, stock: { $gte: quantity } };
+      const reservationUpdate = variantId
+        ? { $inc: { 'variants.$.stock': -quantity, stock: -quantity } }
+        : { $inc: { stock: -quantity } };
+      const reserved = await Product.updateOne(reservationQuery, reservationUpdate);
+      if (reserved.modifiedCount !== 1) {
+        throw new Error(`Insufficient stock for product ${product.name}. Please refresh your cart and try again.`);
       }
-      product.stock -= item.quantity;
-      await product.save();
+      reservedItems.push({ productId: product._id, variantId, quantity });
     }
+
+    transaction = await Transaction.create({
+      userId: order.patientId,
+      amount: computedTotal,
+      currency: 'EUR',
+      relatedOrderId: orderId,
+      status: 'SUCCESS',
+      provider: 'STRIPE',
+      providerReference: `ORD-${Date.now()}-${orderId}`
+    });
+
+    order.paymentStatus = 'PAID';
+    order.status = 'CONFIRMED';
+    order.paymentMethod = 'STRIPE';
+    order.transactionId = transaction._id;
+    order.customerPaidAt = new Date();
+    order.ownerReadAt = null;
+    order.patientReadAt = new Date();
+    await order.save();
+  } catch (error) {
+    // Restore only stock that this request actually reserved. This gives a
+    // failed payment attempt no observable inventory side effect.
+    await Promise.allSettled(reservedItems.map((item) => Product.updateOne(
+      item.variantId
+        ? { _id: item.productId, 'variants._id': item.variantId }
+        : { _id: item.productId },
+      item.variantId
+        ? { $inc: { 'variants.$.stock': item.quantity, stock: item.quantity } }
+        : { $inc: { stock: item.quantity } }
+    )));
+    if (transaction?._id) await Transaction.deleteOne({ _id: transaction._id });
+    throw error;
   }
 
   // Credit seller balance (pharmacy owner/doctor)
@@ -578,12 +672,23 @@ const cancelOrder = async (orderId, userId, userRole) => {
     throw new Error('Cannot cancel an order that has already been paid');
   }
 
-  // Restore product stock (only if order wasn't paid, or if paid but not shipped)
-  if (order.paymentStatus !== 'PAID' || order.status !== 'SHIPPED') {
+  // Stock is deducted only after payment. Restore it only for a paid order
+  // that has not been shipped, otherwise cancelling an unpaid quote inflates
+  // inventory.
+  if (order.paymentStatus === 'PAID' && order.status !== 'SHIPPED') {
     for (const item of order.items) {
       const product = item.productId;
       if (product) {
-        product.stock += item.quantity;
+        const variant = item.variantId && Array.isArray(product.variants)
+          ? product.variants.id(item.variantId)
+          : null;
+        if (variant) {
+          variant.stock += item.quantity;
+          product.stock = product.variants.filter((entry) => entry.isActive !== false)
+            .reduce((total, entry) => total + Number(entry.stock || 0), 0);
+        } else {
+          product.stock += item.quantity;
+        }
         await product.save();
       }
     }

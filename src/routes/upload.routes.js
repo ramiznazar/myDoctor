@@ -98,6 +98,14 @@ router.post(
   asyncHandler(uploadController.uploadSingleFile)
 );
 
+/** Patient-uploaded proof used only for prescription-required products. */
+router.post(
+  '/prescription',
+  authGuard(['PATIENT']),
+  uploadSingleChatFile('prescription'),
+  asyncHandler(uploadController.uploadSingleFile)
+);
+
 /**
  * @route   POST /api/upload/chat
  * @desc    Upload file for chat (supports all file types - images, PDFs, documents, etc.)
@@ -105,7 +113,7 @@ router.post(
  */
 router.post(
   '/chat',
-  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT', 'PHARMACY', 'PARAPHARMACY']),
   uploadSingleChatFile('chat'),
   asyncHandler(uploadController.uploadSingleFile)
 );
@@ -117,7 +125,7 @@ router.post(
  */
 router.post(
   '/chat/multiple',
-  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT', 'PHARMACY', 'PARAPHARMACY']),
   uploadMultipleChatFiles('chat', 10),
   asyncHandler(uploadController.uploadMultipleFiles)
 );

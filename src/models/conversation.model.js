@@ -16,6 +16,14 @@ const conversationSchema = new mongoose.Schema({
     ref: "User",
     default: null
   },
+  // A pharmacy or parapharmacy participant in an admin-support conversation.
+  // Kept separate from doctorId to preserve the doctor/patient schema and
+  // make role-specific permissions explicit.
+  businessId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null
+  },
   appointmentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Appointment",
@@ -30,7 +38,7 @@ const conversationSchema = new mongoose.Schema({
   }],
   conversationType: {
     type: String,
-    enum: ["DOCTOR_PATIENT", "ADMIN_DOCTOR"],
+    enum: ["DOCTOR_PATIENT", "ADMIN_DOCTOR", "ADMIN_PHARMACY", "ADMIN_PARAPHARMACY"],
     default: "DOCTOR_PATIENT"
   },
   status: {
@@ -75,6 +83,7 @@ const conversationSchema = new mongoose.Schema({
 });
 
 conversationSchema.index({ doctorId: 1, patientId: 1, conversationType: 1, mergedInto: 1 });
+conversationSchema.index({ adminId: 1, businessId: 1, conversationType: 1 });
 conversationSchema.index({ patientId: 1, lastMessageAt: -1 });
 conversationSchema.index({ doctorId: 1, lastMessageAt: -1 });
 conversationSchema.index(

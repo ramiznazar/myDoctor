@@ -69,7 +69,7 @@ const normalizeChatAttachments = (items) => (Array.isArray(items) ? items : [])
   .filter(Boolean);
 
 const assertConversationParticipant = (conversation, userId) => {
-  const participantIds = [conversation.doctorId, conversation.patientId, conversation.adminId]
+  const participantIds = [conversation.doctorId, conversation.patientId, conversation.adminId, conversation.businessId]
     .filter(Boolean)
     .map((id) => getId(id));
 
@@ -94,6 +94,110 @@ const resolveMergedConversation = async (conversation) => {
   }
 
   return resolvedConversation;
+};
+
+const adminSupportTypeFor = (role) => ({
+  DOCTOR: 'ADMIN_DOCTOR',
+  PHARMACY: 'ADMIN_PHARMACY',
+  PARAPHARMACY: 'ADMIN_PARAPHARMACY',
+}[String(role || '').toUpperCase()] || null);
+
+const adminSupportKeyFor = (type, adminId, participantId) => `${type}:${getId(adminId)}:${getId(participantId)}`;
+
+/** One durable admin-support conversation is shared by an account and Admin. */
+const getOrCreateAdminSupportConversation = async (actorId, actorRole, targetUserId = null) => {
+  const normalizedRole = String(actorRole || '').toUpperCase();
+  let admin;
+  let participant;
+  if (normalizedRole === 'ADMIN') {
+    if (!targetUserId) throw createHttpError('Choose a doctor, pharmacy or parapharmacy account', 400);
+    admin = await User.findById(actorId);
+    participant = await User.findById(targetUserId);
+  } else {
+    participant = await User.findById(actorId);
+    admin = await User.findOne({ role: 'ADMIN' }).sort({ createdAt: 1 });
+  }
+  if (!admin || admin.role !== 'ADMIN') throw createHttpError('Admin account not found', 404);
+  const type = adminSupportTypeFor(participant?.role);
+  if (!type) throw createHttpError('Only doctors, pharmacies and parapharmacies can contact Admin', 403);
+
+  const relationshipKey = adminSupportKeyFor(type, admin._id, participant._id);
+  let conversation = await Conversation.findOne({ relationshipKey, mergedInto: null });
+  if (!conversation) {
+    // Accept legacy doctor support conversations that predate relationship
+    // keys rather than producing a second row for that doctor.
+    const legacyQuery = type === 'ADMIN_DOCTOR'
+      ? { adminId: admin._id, doctorId: participant._id, conversationType: type, mergedInto: null }
+      : { adminId: admin._id, businessId: participant._id, conversationType: type, mergedInto: null };
+    conversation = await Conversation.findOne(legacyQuery);
+    if (conversation) {
+      conversation.relationshipKey = relationshipKey;
+      try { await conversation.save(); } catch (error) {
+        if (!isDuplicateKeyError(error, 'relationshipKey')) throw error;
+        conversation = await Conversation.findOne({ relationshipKey, mergedInto: null });
+      }
+    }
+  }
+  if (!conversation) {
+    const document = {
+      adminId: admin._id,
+      conversationType: type,
+      relationshipKey,
+      lastMessageAt: new Date(),
+      ...(type === 'ADMIN_DOCTOR' ? { doctorId: participant._id } : { businessId: participant._id }),
+    };
+    try {
+      conversation = await Conversation.create(document);
+    } catch (error) {
+      if (!isDuplicateKeyError(error, 'relationshipKey')) throw error;
+      conversation = await Conversation.findOne({ relationshipKey, mergedInto: null });
+    }
+  }
+  await conversation.populate([
+    { path: 'adminId', select: 'fullName email phone profileImage role' },
+    { path: 'doctorId', select: 'fullName email phone profileImage role' },
+    { path: 'businessId', select: 'fullName email phone profileImage role' },
+  ]);
+  return conversation;
+};
+
+const createHttpError = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+
+const sendAdminSupportMessage = async ({ conversationId, senderId, message, attachments }) => {
+  let conversation = await Conversation.findById(conversationId);
+  if (!conversation || !String(conversation.conversationType || '').startsWith('ADMIN_')) {
+    throw createHttpError('Admin-support conversation not found', 404);
+  }
+  assertConversationParticipant(conversation, senderId);
+  const normalizedAttachments = normalizeChatAttachments(attachments);
+  const content = String(message || '').trim();
+  if (!content && !normalizedAttachments.length) throw createHttpError('Enter a message or attach a file');
+  const now = new Date();
+  const recipientId = sameId(senderId, conversation.adminId)
+    ? (conversation.doctorId || conversation.businessId)
+    : conversation.adminId;
+  conversation.lastMessageAt = now;
+  conversation.lastMessage = { message: content || 'Attachment', sentAt: now, sentBy: senderId };
+  await conversation.save();
+  const chatMessage = await ChatMessage.create({
+    conversationId: conversation._id,
+    adminId: conversation.adminId,
+    doctorId: conversation.doctorId || null,
+    businessId: conversation.businessId || null,
+    senderId,
+    message: content || null,
+    attachments: normalizedAttachments.length ? normalizedAttachments : null,
+    isRead: false,
+  });
+  await Notification.create({
+    userId: recipientId,
+    title: sameId(senderId, conversation.adminId) ? 'New message from Admin' : 'New message for Admin',
+    body: content || 'You have a new attachment',
+    type: 'CHAT',
+    data: { conversationId: String(conversation._id), messageId: String(chatMessage._id), action: 'ADMIN_SUPPORT_CHAT' },
+    isRead: false,
+  });
+  return chatMessage;
 };
 
 /**
@@ -261,31 +365,34 @@ const sendMessage = async (data) => {
       isRead: false
     });
 
-    if (sameId(senderId, adminId)) {
-      try {
-        await Notification.create({
-          userId: doctorId,
-          title: 'New Message from Admin',
-          body: message ? (message.length > 100 ? message.substring(0, 100) + '...' : message) : 'You have a new message',
-          i18n: {
-            title: { it: 'Nuovo messaggio dall\'amministratore' },
-            body: {
-              it: message
-                ? (message.length > 100 ? message.substring(0, 100) + '...' : message)
-                : 'Hai un nuovo messaggio',
-            },
+    // Keep the established Doctor Admin page fully bidirectional too. The
+    // newer generic admin-support endpoint already does this; this branch is
+    // retained for existing Doctor UI routes and must notify Admin when the
+    // doctor writes, not only the other way around.
+    const sentByAdmin = sameId(senderId, adminId);
+    try {
+      await Notification.create({
+        userId: sentByAdmin ? doctorId : adminId,
+        title: sentByAdmin ? 'New Message from Admin' : 'New Message for Admin',
+        body: message ? (message.length > 100 ? message.substring(0, 100) + '...' : message) : 'You have a new message',
+        i18n: sentByAdmin ? {
+          title: { it: 'Nuovo messaggio dall\'amministratore' },
+          body: {
+            it: message
+              ? (message.length > 100 ? message.substring(0, 100) + '...' : message)
+              : 'Hai un nuovo messaggio',
           },
-          type: 'CHAT',
-          data: {
-            conversationId: conversation._id.toString(),
-            messageId: chatMessage._id.toString(),
-            senderId: adminId.toString()
-          },
-          isRead: false
-        });
-      } catch (notificationError) {
-        console.error('Failed to create notification:', notificationError);
-      }
+        } : undefined,
+        type: 'CHAT',
+        data: {
+          conversationId: conversation._id.toString(),
+          messageId: chatMessage._id.toString(),
+          senderId: String(senderId)
+        },
+        isRead: false
+      });
+    } catch (notificationError) {
+      console.error('Failed to create notification:', notificationError);
     }
 
     return chatMessage;
@@ -416,6 +523,8 @@ const getMessages = async (conversationId, userId, options = {}) => {
   const responseConversation = await Conversation.findById(conversation._id)
     .populate('doctorId', 'fullName email phone profileImage')
     .populate('patientId', 'fullName email phone profileImage')
+    .populate('adminId', 'fullName email phone profileImage role')
+    .populate('businessId', 'fullName email phone profileImage role')
     .populate('appointmentId', 'appointmentDate appointmentTime appointmentEndTime status');
 
   return {
@@ -592,7 +701,7 @@ const getConversations = async (userId, userRole, options = {}) => {
   let query = {};
 
   if (userRole === 'ADMIN') {
-    query = { adminId: userId, conversationType: 'ADMIN_DOCTOR' };
+    query = { adminId: userId, conversationType: { $in: ['ADMIN_DOCTOR', 'ADMIN_PHARMACY', 'ADMIN_PARAPHARMACY'] } };
   } else if (userRole === 'DOCTOR') {
     query = {
       $or: [
@@ -602,6 +711,10 @@ const getConversations = async (userId, userRole, options = {}) => {
     };
   } else if (userRole === 'PATIENT') {
     query = { patientId: userId, conversationType: 'DOCTOR_PATIENT' };
+  } else if (userRole === 'PHARMACY') {
+    query = { businessId: userId, conversationType: 'ADMIN_PHARMACY' };
+  } else if (userRole === 'PARAPHARMACY') {
+    query = { businessId: userId, conversationType: 'ADMIN_PARAPHARMACY' };
   } else {
     throw new Error('Invalid role. Only ADMIN, DOCTOR and PATIENT can list conversations.');
   }
@@ -615,6 +728,7 @@ const getConversations = async (userId, userRole, options = {}) => {
       .populate('adminId', 'fullName email phone profileImage')
       .populate('doctorId', 'fullName email phone profileImage')
       .populate('patientId', 'fullName email phone profileImage')
+      .populate('businessId', 'fullName email phone profileImage role')
       .populate('appointmentId', 'appointmentDate appointmentTime appointmentEndTime status')
       .sort({ lastMessageAt: -1 })
       .skip(skip)
@@ -696,7 +810,7 @@ const getUnreadCount = async (userId, userRole) => {
   }
 
   if (userRole === 'ADMIN') {
-    conversationQuery = { adminId: userId, conversationType: 'ADMIN_DOCTOR' };
+    conversationQuery = { adminId: userId, conversationType: { $in: ['ADMIN_DOCTOR', 'ADMIN_PHARMACY', 'ADMIN_PARAPHARMACY'] } };
   } else if (userRole === 'DOCTOR') {
     conversationQuery = {
       $or: [
@@ -706,6 +820,10 @@ const getUnreadCount = async (userId, userRole) => {
     };
   } else if (userRole === 'PATIENT') {
     conversationQuery = { patientId: userId, conversationType: 'DOCTOR_PATIENT' };
+  } else if (userRole === 'PHARMACY') {
+    conversationQuery = { businessId: userId, conversationType: 'ADMIN_PHARMACY' };
+  } else if (userRole === 'PARAPHARMACY') {
+    conversationQuery = { businessId: userId, conversationType: 'ADMIN_PARAPHARMACY' };
   } else {
     return 0;
   }
@@ -761,8 +879,10 @@ const markConversationComplete = async (conversationId, doctorId) => {
 
 module.exports = {
   sendMessage,
+  sendAdminSupportMessage,
   getMessages,
   getOrCreateConversation,
+  getOrCreateAdminSupportConversation,
   getConversations,
   markMessagesAsRead,
   getUnreadCount,

@@ -120,10 +120,11 @@ exports.updateShippingFee = asyncHandler(async (req, res) => {
       await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
     }
   }
-  const { shippingFee } = req.body;
+  const { shippingFee, deliveryDays } = req.body;
   const result = await orderService.updateShippingFee(
     req.params.id,
     shippingFee,
+    deliveryDays,
     req.userId,
     req.userRole
   );

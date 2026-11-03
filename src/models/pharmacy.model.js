@@ -35,6 +35,11 @@ const pharmacySchema = new mongoose.Schema({
     lat: { type: Number, default: null },
     lng: { type: Number, default: null }
   },
+  shippingSettings: {
+    fee: { type: Number, default: 0, min: 0 },
+    deliveryDays: { type: Number, default: null, min: 1, max: 60 },
+    updatedAt: { type: Date, default: null }
+  },
   isActive: {
     type: Boolean,
     default: true

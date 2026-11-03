@@ -18,6 +18,10 @@ const getId = (value) => (value?._id || value)?.toString?.() || String(value || 
 
 const displayName = (user) => user?.fullName || user?.name || user?.email || 'User';
 
+const ensureStreamParticipants = async (appointment) => {
+  await streamService.upsertUsers([appointment?.doctorId, appointment?.patientId]);
+};
+
 const expireUnansweredSession = async (session, now = new Date()) => {
   if (!session || session.status !== 'RINGING') return false;
   const ringingAt = session.ringingAt || session.createdAt;
@@ -96,6 +100,7 @@ const startSession = async (appointmentId, userId, userName) => {
 
   const { appointment, doctorId, patientId, currentUserId } = await loadAppointmentForParticipant(appointmentId, userId);
   assertAppointmentWindow(appointment);
+  await ensureStreamParticipants(appointment);
 
   let session = await VideoSession.findOne({ appointmentId }).sort({ updatedAt: -1 });
   if (session?.status === 'RINGING') {
@@ -154,6 +159,7 @@ const acceptSession = async (sessionId, userId, userName) => {
   if (session.status !== 'RINGING') throw createHttpError('This call is no longer ringing');
 
   assertAppointmentWindow(appointment);
+  await ensureStreamParticipants(session);
   const now = new Date();
   session.status = 'ACTIVE';
   session.acceptedBy = userId;
@@ -196,7 +202,8 @@ const endSession = async (sessionId, userId) => {
 };
 
 const getSessionByAppointment = async (appointmentId, userId, userName) => {
-  await loadAppointmentForParticipant(appointmentId, userId);
+  const { appointment } = await loadAppointmentForParticipant(appointmentId, userId);
+  await ensureStreamParticipants(appointment);
   const session = await VideoSession.findOne({ appointmentId })
     .populate('doctorId', 'fullName email profileImage')
     .populate('patientId', 'fullName email profileImage')

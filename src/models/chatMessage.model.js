@@ -21,6 +21,11 @@ const chatMessageSchema = new mongoose.Schema({
     ref: "User",
     default: null
   },
+  businessId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null
+  },
   senderId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",

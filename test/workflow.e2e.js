@@ -70,6 +70,20 @@ const seed = async () => {
     durationInDays: 30,
     status: 'ACTIVE',
   });
+  const pharmacyPlan = await SubscriptionPlan.create({
+    targetRole: 'PHARMACY',
+    name: 'STARTER',
+    price: 29,
+    durationInDays: 30,
+    status: 'ACTIVE',
+  });
+  const admin = await User.create({
+    role: 'ADMIN',
+    fullName: 'Workflow Admin',
+    email: 'workflow-admin@example.test',
+    password: 'not-used-by-this-test',
+    status: 'APPROVED',
+  });
   const doctor = await User.create({
     role: 'DOCTOR',
     fullName: 'Workflow Doctor',
@@ -115,6 +129,14 @@ const seed = async () => {
     ownerId: parapharmacy._id,
     kind: 'PARAPHARMACY',
     name: 'Workflow Para Store',
+    phone: '+49-30-555-0100',
+    address: { line1: '12 Health Avenue', city: 'Berlin', state: 'Berlin', country: 'DE', zip: '10115' },
+    shippingSettings: { fee: 4.5, deliveryDays: 3 },
+  });
+  const pharmacyProfile = await Pharmacy.create({
+    ownerId: pharmacy._id,
+    kind: 'PHARMACY',
+    name: 'Workflow Pharmacy Store',
   });
   const product = await Product.create({
     sellerId: parapharmacy._id,
@@ -125,11 +147,40 @@ const seed = async () => {
     stock: 10,
     category: 'Health',
   });
+  const prescriptionProduct = await Product.create({
+    sellerId: parapharmacy._id,
+    sellerType: 'PARAPHARMACY',
+    name: 'Workflow Prescription Medicine',
+    description: 'A variant-based medicine used by the prescription workflow test.',
+    price: 14,
+    discountPrice: 12,
+    images: ['/uploads/products/workflow-prescription-product.jpg'],
+    stock: 12,
+    category: 'Medicine',
+    productType: 'PARAPHARMACY_PRODUCT',
+    requiresPrescription: true,
+    parapharmacyDetails: { ingredients: 'Workflow active ingredients', usageInstructions: 'Use exactly as prescribed.' },
+    variants: [{
+      name: '20-tablet pack',
+      sku: 'WF-RX-20',
+      price: 14,
+      discountPrice: 12,
+      stock: 12,
+      packageType: 'Box',
+      unitsPerPack: 20,
+      unitLabel: 'tablets',
+      isDefault: true,
+      isActive: true,
+    }],
+  });
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     .map((dayOfWeek) => ({ dayOfWeek, timeSlots: [{ startTime: '00:00', endTime: '23:59', isAvailable: true }] }));
   await WeeklySchedule.create({ doctorId: doctor._id, appointmentDuration: 60, days });
-  return { doctor, patient, pharmacy, parapharmacy, parapharmacyProfile, product };
+  return {
+    admin, doctor, patient, pharmacy, parapharmacy, pharmacyPlan,
+    pharmacyProfile, parapharmacyProfile, product, prescriptionProduct,
+  };
 };
 
 const main = async () => {
@@ -143,7 +194,11 @@ const main = async () => {
     await mongoose.connection.dropDatabase();
     await Promise.all([Appointment.syncIndexes(), Conversation.syncIndexes()]);
 
-    const { doctor, patient, pharmacy, parapharmacy, product } = await seed();
+    const {
+      admin, doctor, patient, pharmacy, parapharmacy, pharmacyPlan,
+      pharmacyProfile, product, prescriptionProduct,
+    } = await seed();
+    const adminToken = tokenFor(admin);
     const doctorToken = tokenFor(doctor);
     const patientToken = tokenFor(patient);
     const pharmacyToken = tokenFor(pharmacy);
@@ -153,12 +208,58 @@ const main = async () => {
     const address = server.address();
     const api = createApi(`http://127.0.0.1:${address.port}/api`);
 
+    // Setup is server-backed, which makes the pharmacy/parapharmacy prompt
+    // durable across browser sessions instead of a dismissible UI flag.
+    const incompletePharmacySetup = expectOk(await api('/pharmacy/setup-status', { token: pharmacyToken }), 'new pharmacy setup status');
+    assert.equal(incompletePharmacySetup.profileCompleted, false, 'new pharmacy must complete its profile');
+    assert.equal(incompletePharmacySetup.hasActiveSubscription, false, 'new pharmacy must activate a subscription');
+    const completeParapharmacySetup = expectOk(await api('/pharmacy/setup-status', { token: parapharmacyToken }), 'parapharmacy setup status');
+    assert.equal(completeParapharmacySetup.isSetupComplete, true, 'parapharmacy setup has no subscription requirement');
+    assert.equal(completeParapharmacySetup.requiresSubscription, false, 'parapharmacy never requires a subscription');
+    expectOk(await api(`/pharmacy/${pharmacyProfile._id}`, {
+      method: 'PUT', token: pharmacyToken,
+      body: {
+        name: 'Workflow Pharmacy Store', phone: '+49-30-555-0101',
+        address: { line1: '13 Health Avenue', city: 'Berlin', state: 'Berlin', country: 'DE', zip: '10116' },
+        shippingSettings: { fee: 5, deliveryDays: 2 },
+      },
+    }), 'pharmacy completes business profile and delivery settings');
+    const profileOnlySetup = expectOk(await api('/pharmacy/setup-status', { token: pharmacyToken }), 'profile-complete pharmacy setup');
+    assert.equal(profileOnlySetup.profileCompleted, true, 'profile completion persists');
+    assert.equal(profileOnlySetup.isSetupComplete, false, 'subscription is still required for pharmacy');
+    expectOk(await api('/pharmacy/buy-subscription', { method: 'POST', token: pharmacyToken, body: { planId: pharmacyPlan._id.toString() } }), 'pharmacy activates subscription');
+    const activatedPharmacySetup = expectOk(await api('/pharmacy/setup-status', { token: pharmacyToken }), 'activated pharmacy setup');
+    assert.equal(activatedPharmacySetup.isSetupComplete, true, 'completed pharmacy setup remains complete after server refresh');
+
+    const richProduct = expectOk(await api('/products', {
+      method: 'POST', token: pharmacyToken,
+      body: {
+        name: 'Workflow Variant Medicine', price: 10, stock: 9,
+        description: 'Detailed product created through the pharmacy product API.',
+        productType: 'PHARMACY_MEDICINE', category: 'Wellness', brand: 'Workflow',
+        images: ['/uploads/products/workflow-variant-product.jpg'],
+        medicineDetails: { activeIngredients: 'Workflow ingredient', dosageInstructions: 'Use as directed.' },
+        variants: [
+          { name: '50 ml bottle', price: 10, stock: 5, packageType: 'Bottle', unitsPerPack: 50, unitLabel: 'ml', isDefault: true },
+          { name: '100 ml bottle', price: 18, discountPrice: 15, stock: 4, packageType: 'Bottle', unitsPerPack: 100, unitLabel: 'ml' },
+        ],
+      },
+    }), 'pharmacy creates detailed product with variants');
+    assert.equal(richProduct.variants.length, 2, 'both product variants are persisted');
+    const richProductView = expectOk(await api(`/products/${richProduct._id}`), 'patient product detail receives all saved information');
+    assert.equal(richProductView.variants[1].discountPrice, 15, 'variant sale price is returned to patient product pages');
+    assert.equal(richProductView.shippingSettings.deliveryDays, 2, 'seller delivery commitment is returned with product details');
+
     const now = new Date();
-    if (now.getUTCHours() === 23) {
-      throw new Error('Run this workflow test outside the final UTC hour; the test schedule intentionally ends at 23:59.');
-    }
     const appointmentDate = calendarDate(now);
-    const appointmentTime = clockHour(now);
+    // The test doctor works until 23:59. In the final UTC hour, use a
+    // valid 22:00 slot in a UTC-01:00 device zone: its real-time call window
+    // is 23:00–00:00 UTC, so the same workflow remains executable at any
+    // time of day without relaxing schedule validation.
+    const isFinalUtcHour = now.getUTCHours() === 23;
+    const appointmentTime = isFinalUtcHour ? '22:00' : clockHour(now);
+    const appointmentTimezone = isFinalUtcHour ? 'Etc/GMT+1' : 'UTC';
+    const appointmentTimezoneOffset = isFinalUtcHour ? -60 : 0;
     assert.equal(dayName(now).length > 0, true);
 
     // Exercise the real doctor schedule API and database persistence with
@@ -206,8 +307,8 @@ const main = async () => {
       appointmentTime,
       bookingType: 'ONLINE',
       selectedServices: ['Consultation'],
-      timezone: 'UTC',
-      timezoneOffset: 0,
+      timezone: appointmentTimezone,
+      timezoneOffset: appointmentTimezoneOffset,
     };
     const [firstCreate, secondCreate] = await Promise.all([
       api('/appointment', { method: 'POST', token: patientToken, body: booking }),
@@ -218,7 +319,7 @@ const main = async () => {
     const appointment = expectOk(created, 'one concurrent appointment booking');
     assert.equal(rejected.status, 409, 'the conflicting concurrent booking is rejected');
     assert.equal(appointment.status, 'PENDING_PAYMENT');
-    assert.equal(appointment.appointmentEndTime, `${String((now.getUTCHours() + 1) % 24).padStart(2, '0')}:00`);
+    assert.equal(appointment.appointmentEndTime, isFinalUtcHour ? '23:00' : `${String((now.getUTCHours() + 1) % 24).padStart(2, '0')}:00`);
 
     const slotsAfterBooking = expectOk(await api(`/weekly-schedule/slots?doctorId=${doctor._id}&date=${appointmentDate}`), 'availability after booking');
     assert.equal(slotsAfterBooking.some((slot) => slot.startTime === appointmentTime), false, 'booked slot is no longer offered');
@@ -375,7 +476,90 @@ const main = async () => {
     const pharmacyOrderCount = expectOk(await api('/orders/unread-count', { token: pharmacyToken }), 'pharmacy unread order count');
     assert.equal(pharmacyOrderCount.unreadCount, 0, 'a separate pharmacy sees no unrelated order indicator');
 
-    console.log('PASS: booking, checkout, scheduling, video ringing, canonical chat, and role-scoped order updates');
+    // Prescription-only products reject an order until the seller reviews the
+    // exact selected option. Approval then unlocks only that patient/product
+    // option and preserves the selected variant, delivery address, shipping
+    // fee and delivery commitment on the resulting order.
+    const prescriptionVariant = prescriptionProduct.variants[0];
+    const beforePrescription = expectOk(await api(`/product-prescription-requests/product/${prescriptionProduct._id}/eligibility?variantId=${prescriptionVariant._id}`, { token: patientToken }), 'prescription eligibility before upload');
+    assert.equal(beforePrescription.status, 'NOT_SUBMITTED');
+    const blockedPrescriptionOrder = await api('/orders', {
+      method: 'POST', token: patientToken,
+      body: {
+        items: [{ productId: prescriptionProduct._id.toString(), variantId: prescriptionVariant._id.toString(), quantity: 2 }],
+        shippingAddress: { line1: '5 Patient Street', city: 'Berlin', state: 'Berlin', country: 'DE', zip: '10117' },
+      },
+    });
+    assert.equal(blockedPrescriptionOrder.status, 403, 'prescription products cannot be ordered before approval');
+    const prescriptionRequest = expectOk(await api('/product-prescription-requests', {
+      method: 'POST', token: patientToken,
+      body: {
+        productId: prescriptionProduct._id.toString(), variantId: prescriptionVariant._id.toString(),
+        prescriptionUrl: '/uploads/prescriptions/workflow-prescription.pdf', originalName: 'workflow-prescription.pdf', mimeType: 'application/pdf',
+      },
+    }), 'patient submits prescription for selected variant');
+    const sellerRequests = expectOk(await api('/product-prescription-requests/seller?status=PENDING', { token: parapharmacyToken }), 'seller sees submitted prescription');
+    assert.equal(sellerRequests.requests.some((request) => request._id === prescriptionRequest._id), true, 'prescription appears in the correct seller account');
+    const approvedPrescription = expectOk(await api(`/product-prescription-requests/${prescriptionRequest._id}/review`, {
+      method: 'PUT', token: parapharmacyToken, body: { status: 'APPROVED', reviewNotes: 'Verified by workflow test' },
+    }), 'seller approves prescription');
+    assert.equal(approvedPrescription.status, 'APPROVED');
+    const approvedEligibility = expectOk(await api(`/product-prescription-requests/product/${prescriptionProduct._id}/eligibility?variantId=${prescriptionVariant._id}`, { token: patientToken }), 'prescription eligibility after approval');
+    assert.equal(approvedEligibility.canPurchase, true, 'approved prescription unlocks checkout');
+    const prescriptionOrder = expectOk(await api('/orders', {
+      method: 'POST', token: patientToken,
+      body: {
+        items: [{ productId: prescriptionProduct._id.toString(), variantId: prescriptionVariant._id.toString(), quantity: 2 }],
+        shippingAddress: { line1: '5 Patient Street', line2: 'Apartment 4', city: 'Berlin', state: 'Berlin', country: 'DE', zip: '10117' },
+      },
+    }), 'patient creates approved prescription order');
+    assert.equal(prescriptionOrder.items[0].variantName, '20-tablet pack', 'order snapshots the chosen product variant');
+    assert.equal(prescriptionOrder.shipping, 4.5, 'configured shipping fee is attached at checkout');
+    assert.equal(prescriptionOrder.promisedDeliveryDays, 3, 'configured delivery commitment is attached at checkout');
+    assert.equal(prescriptionOrder.shippingAddress.line1, '5 Patient Street', 'patient delivery address is saved on order');
+    const patientPrescriptionOrder = expectOk(await api(`/orders/${prescriptionOrder._id}`, { token: patientToken }), 'patient order details include delivery address');
+    const sellerPrescriptionOrder = expectOk(await api(`/orders/${prescriptionOrder._id}`, { token: parapharmacyToken }), 'seller order details include delivery address');
+    assert.equal(patientPrescriptionOrder.shippingAddress.zip, '10117', 'patient sees complete delivery address');
+    assert.equal(sellerPrescriptionOrder.shippingAddress.line2, 'Apartment 4', 'seller sees complete delivery address');
+    const revisedDelivery = expectOk(await api(`/orders/${prescriptionOrder._id}/shipping`, {
+      method: 'PUT', token: parapharmacyToken, body: { shippingFee: 6.5, deliveryDays: 5 },
+    }), 'seller revises shipping fee and delivery promise');
+    assert.equal(revisedDelivery.finalShipping, 6.5, 'revised shipping fee is stored');
+    assert.equal(revisedDelivery.promisedDeliveryDays, 5, 'revised delivery commitment is stored');
+    const paidPrescriptionOrder = expectOk(await api(`/orders/${prescriptionOrder._id}/pay`, { method: 'POST', token: patientToken, body: { paymentMethod: 'STRIPE' } }), 'patient pays prescription order');
+    assert.equal(paidPrescriptionOrder.paymentStatus, 'PAID', 'approved order completes payment');
+    const stockedPrescriptionProduct = expectOk(await api(`/products/${prescriptionProduct._id}`), 'product after paid prescription order');
+    assert.equal(stockedPrescriptionProduct.variants[0].stock, 10, 'payment atomically reduces only the selected variant stock');
+
+    // Every supported business role receives one durable admin conversation.
+    // The Admin inbox sees each role, messages are delivered both directions,
+    // and unread status belongs only to the receiving account.
+    const pharmacySupport = expectOk(await api('/chat/admin-support/conversation', { method: 'POST', token: pharmacyToken }), 'pharmacy opens Admin support chat');
+    const reusedPharmacySupport = expectOk(await api('/chat/admin-support/conversation', { method: 'POST', token: pharmacyToken }), 'pharmacy reopens Admin support chat');
+    assert.equal(reusedPharmacySupport._id, pharmacySupport._id, 'pharmacy support chat is canonical');
+    expectOk(await api(`/chat/admin-support/conversations/${pharmacySupport._id}/messages`, {
+      method: 'POST', token: pharmacyToken, body: { message: 'I need help with a product.' },
+    }), 'pharmacy sends Admin support message');
+    const parapharmacySupport = expectOk(await api('/chat/admin-support/conversation', { method: 'POST', token: parapharmacyToken }), 'parapharmacy opens Admin support chat');
+    const doctorSupport = expectOk(await api('/chat/admin-support/conversation', { method: 'POST', token: doctorToken }), 'doctor opens Admin support chat');
+    const adminInbox = expectOk(await api('/chat/conversations', { token: adminToken }), 'Admin lists all support conversations');
+    assert.equal(
+      ['ADMIN_PHARMACY', 'ADMIN_PARAPHARMACY', 'ADMIN_DOCTOR'].every((type) => adminInbox.conversations.some((conversation) => conversation.conversationType === type)),
+      true,
+      'Admin inbox includes pharmacy, parapharmacy and doctor conversations'
+    );
+    const adminUnread = expectOk(await api('/chat/unread-count', { token: adminToken }), 'Admin unread support count');
+    assert.equal(adminUnread.unreadCount >= 1, true, 'Admin receives an unread message from pharmacy');
+    expectOk(await api(`/chat/admin-support/conversations/${pharmacySupport._id}/messages`, {
+      method: 'POST', token: adminToken, body: { message: 'Your request is being reviewed.' },
+    }), 'Admin replies to pharmacy support chat');
+    const pharmacySupportHistory = expectOk(await api(`/chat/messages/${pharmacySupport._id}`, { token: pharmacyToken }), 'pharmacy reads Admin support history');
+    assert.equal(pharmacySupportHistory.messages.length, 2, 'both support messages remain accessible as history');
+    expectOk(await api(`/chat/conversations/${pharmacySupport._id}/read`, { method: 'PUT', token: pharmacyToken }), 'pharmacy marks Admin reply as read');
+    assert.equal(parapharmacySupport.conversationType, 'ADMIN_PARAPHARMACY');
+    assert.equal(doctorSupport.conversationType, 'ADMIN_DOCTOR');
+
+    console.log('PASS: appointment/video, canonical chat, onboarding, rich variants, prescription approval, checkout/shipping, and Admin support workflows');
   } finally {
     if (server) await close(server);
     if (mongoose.connection.readyState) {

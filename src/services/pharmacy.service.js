@@ -70,8 +70,9 @@ const updatePharmacy = async (id, data) => {
 
   Object.keys(data).forEach(key => {
     if (data[key] !== undefined) {
-      if (key === 'address' || key === 'location') {
+      if (key === 'address' || key === 'location' || key === 'shippingSettings') {
         pharmacy[key] = { ...pharmacy[key], ...data[key] };
+        if (key === 'shippingSettings') pharmacy.shippingSettings.updatedAt = new Date();
       } else {
         pharmacy[key] = data[key];
       }
@@ -81,6 +82,41 @@ const updatePharmacy = async (id, data) => {
   await pharmacy.save();
 
   return pharmacy;
+};
+
+/**
+ * A persisted server-side setup checklist.  The frontend deliberately derives
+ * its modal state from this response on every login, so dismissing a modal
+ * can never hide an incomplete account permanently.
+ */
+const getSetupStatus = async (ownerId) => {
+  const [pharmacy, owner] = await Promise.all([
+    Pharmacy.findOne({ ownerId }).lean(),
+    User.findById(ownerId).populate('subscriptionPlan').lean()
+  ]);
+  if (!owner || !['PHARMACY', 'PARAPHARMACY'].includes(String(owner.role || '').toUpperCase())) {
+    const error = new Error('Pharmacy account not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  const role = String(owner.role).toUpperCase();
+  const profileCompleted = Boolean(pharmacy && String(pharmacy.name || '').trim() && String(pharmacy.phone || '').trim() && String(pharmacy.address?.line1 || '').trim() && String(pharmacy.address?.city || '').trim());
+  const requiresSubscription = role === 'PHARMACY';
+  const hasActiveSubscription = !requiresSubscription || Boolean(owner.subscriptionPlan && owner.subscriptionExpiresAt && new Date(owner.subscriptionExpiresAt) > new Date());
+  const requirements = [
+    { key: 'profile', label: 'Complete business profile', complete: profileCompleted },
+    ...(requiresSubscription ? [{ key: 'subscription', label: 'Activate a subscription', complete: hasActiveSubscription }] : [])
+  ];
+  return {
+    role,
+    pharmacy,
+    profileCompleted,
+    requiresSubscription,
+    hasActiveSubscription,
+    requirements,
+    isSetupComplete: profileCompleted && hasActiveSubscription,
+    isPublic: Boolean(owner.status === 'APPROVED' && pharmacy?.isActive && profileCompleted && hasActiveSubscription)
+  };
 };
 
 /**
@@ -414,6 +450,7 @@ module.exports = {
   createPharmacy,
   buySubscriptionPlan,
   getMySubscriptionPlan,
+  getSetupStatus,
   updatePharmacy,
   getPharmacy,
   getPharmacyByOwnerId,

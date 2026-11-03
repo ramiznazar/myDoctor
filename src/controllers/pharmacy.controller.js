@@ -32,6 +32,11 @@ exports.getMyPharmacy = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'OK', data: result });
 });
 
+exports.getSetupStatus = asyncHandler(async (req, res) => {
+  const result = await pharmacyService.getSetupStatus(req.userId);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
 /**
  * Update pharmacy
  * Admin can update any pharmacy, Pharmacy can only update their own pharmacy

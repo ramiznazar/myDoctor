@@ -44,7 +44,7 @@ router.get(
  */
 router.get(
   '/conversations',
-  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT', 'PHARMACY', 'PARAPHARMACY']),
   asyncHandler(chatController.getConversations)
 );
 
@@ -61,6 +61,18 @@ router.post(
   authGuard([]),
   validate(createOrGetConversationValidator),
   asyncHandler(chatController.getOrCreateConversation)
+);
+
+router.post(
+  '/admin-support/conversation',
+  authGuard(['ADMIN', 'DOCTOR', 'PHARMACY', 'PARAPHARMACY']),
+  asyncHandler(chatController.getOrCreateAdminSupportConversation)
+);
+
+router.post(
+  '/admin-support/conversations/:conversationId/messages',
+  authGuard(['ADMIN', 'DOCTOR', 'PHARMACY', 'PARAPHARMACY']),
+  asyncHandler(chatController.sendAdminSupportMessage)
 );
 
 /**
@@ -92,7 +104,7 @@ router.post(
  */
 router.get(
   '/unread-count',
-  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT', 'PHARMACY', 'PARAPHARMACY']),
   asyncHandler(chatController.getUnreadCount)
 );
 
