@@ -11,7 +11,7 @@ const asyncHandler = require('../middleware/asyncHandler');
  */
 router.post(
   '/appointment',
-  authGuard([]),
+  authGuard(['PATIENT']),
   asyncHandler(paymentController.processAppointmentPayment)
 );
 

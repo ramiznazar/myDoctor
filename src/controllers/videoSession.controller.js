@@ -1,94 +1,77 @@
 const asyncHandler = require('../middleware/asyncHandler');
 const videoSessionService = require('../services/videoSession.service');
 
-/**
- * Start video session
- */
-exports.startSession = asyncHandler(async (req, res) => {
-  try {
-    console.log('\n🚀 [VIDEO] Start session request received');
-    console.log('📋 Request body:', req.body);
-    console.log('👤 User ID:', req.userId);
-    console.log('👤 User:', req.user?.fullName || req.user?.email);
-    
-    const { appointmentId } = req.body;
-    const userId = req.userId;
-    const userName = req.user?.fullName || req.user?.email || 'User';
-    
-    if (!appointmentId) {
-      console.error('❌ Missing appointmentId in request');
-      return res.status(400).json({
-        success: false,
-        message: 'Appointment ID is required',
-        errors: [{ field: 'appointmentId', message: 'Appointment ID is required' }]
-      });
-    }
-    
-    const result = await videoSessionService.startSession(
-      appointmentId,
-      userId,
-      userName
-    );
-    
-    console.log('✅ [VIDEO] Session started successfully');
-    console.log('📊 Response data:', {
-      sessionId: result.session._id,
-      streamCallId: result.streamCallId,
-      hasToken: !!result.streamToken
-    });
-    
-    res.json({ 
-      success: true, 
-      message: 'Video session started', 
-      data: {
-        sessionId: result.session._id,
-        streamToken: result.streamToken,
-        streamCallId: result.streamCallId,
-        session: result.session
-      }
-    });
-  } catch (error) {
-    console.error('❌ [VIDEO] Error in startSession controller:', error);
-    console.error('❌ Error message:', error.message);
-    console.error('❌ Error stack:', error.stack);
-    
-    // Re-throw to let asyncHandler handle it
-    throw error;
-  }
+const serializeSessionCredentials = (result) => ({
+  sessionId: result.session._id,
+  streamToken: result.streamToken,
+  streamCallId: result.streamCallId,
+  streamApiKey: result.streamApiKey,
+  streamMembers: result.streamMembers,
+  session: result.session,
 });
 
 /**
- * End video session
+ * Start video session / ring the other participant
+ */
+exports.startSession = asyncHandler(async (req, res) => {
+  const { appointmentId } = req.body;
+  const userId = req.userId;
+  const userName = req.user?.fullName || req.user?.email || 'User';
+
+  if (!appointmentId) {
+    return res.status(400).json({ success: false, message: 'Appointment ID is required' });
+  }
+
+  const result = await videoSessionService.startSession(appointmentId, userId, userName);
+  res.json({ success: true, message: 'Video session started', data: serializeSessionCredentials(result) });
+});
+
+/**
+ * Accept an incoming call and return the receiver's join credentials
+ */
+exports.acceptSession = asyncHandler(async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId) {
+    return res.status(400).json({ success: false, message: 'Video call ID is required' });
+  }
+
+  const result = await videoSessionService.acceptSession(
+    sessionId,
+    req.userId,
+    req.user?.fullName || req.user?.email || 'User'
+  );
+  res.json({ success: true, message: 'Video call accepted', data: serializeSessionCredentials(result) });
+});
+
+/**
+ * End a ringing or active session. Idempotent by design.
  */
 exports.endSession = asyncHandler(async (req, res) => {
   const { sessionId } = req.body;
-  const result = await videoSessionService.endSession(sessionId);
+  if (!sessionId) {
+    return res.status(400).json({ success: false, message: 'Video call ID is required' });
+  }
+  const result = await videoSessionService.endSession(sessionId, req.userId);
   res.json({ success: true, message: 'Video session ended', data: result });
 });
 
 /**
- * Get session by appointment ID
+ * Get session by appointment ID with a fresh token for the current participant
  */
 exports.getByAppointment = asyncHandler(async (req, res) => {
   const { appointmentId } = req.params;
-  const userId = req.userId;
-  const userName = req.user?.fullName || req.user?.email || 'User';
-  
   const result = await videoSessionService.getSessionByAppointment(
     appointmentId,
-    userId,
-    userName
+    req.userId,
+    req.user?.fullName || req.user?.email || 'User'
   );
-  
-  res.json({ 
-    success: true, 
-    message: 'OK', 
-    data: {
-      sessionId: result.session._id,
-      streamToken: result.streamToken,
-      streamCallId: result.streamCallId,
-      session: result.session
-    }
-  });
+  res.json({ success: true, message: 'OK', data: serializeSessionCredentials(result) });
 });
 
+/**
+ * List calls currently ringing for the authenticated user
+ */
+exports.getIncoming = asyncHandler(async (req, res) => {
+  const sessions = await videoSessionService.getIncomingSessions(req.userId);
+  res.json({ success: true, message: 'OK', data: { sessions } });
+});

@@ -3,34 +3,197 @@ const Conversation = require('../models/conversation.model');
 const User = require('../models/user.model');
 const Appointment = require('../models/appointment.model');
 const Notification = require('../models/notification.model');
-const { isWithinAppointmentWindow } = require('../middleware/appointmentAccess');
- const subscriptionPolicy = require('./subscriptionPolicy.service');
+const mongoose = require('mongoose');
+const subscriptionPolicy = require('./subscriptionPolicy.service');
+const { getAppointmentStart } = require('../utils/appointmentTime');
+
+const sameId = (left, right) => String(left || '') === String(right || '');
+
+const getId = (value) => (value?._id || value)?.toString?.() || String(value || '');
+
+const relationshipKeyFor = (doctorId, patientId) =>
+  `DOCTOR_PATIENT:${getId(doctorId)}:${getId(patientId)}`;
+
+const isDuplicateKeyError = (error, field) => error?.code === 11000 && Boolean(error?.keyPattern?.[field]);
+
+const ensureRelationshipKey = async (conversation, doctorId, patientId) => {
+  if (!conversation) return null;
+  const relationshipKey = relationshipKeyFor(doctorId, patientId);
+  if (conversation.relationshipKey === relationshipKey) return conversation;
+
+  conversation.relationshipKey = relationshipKey;
+  try {
+    await conversation.save();
+    return conversation;
+  } catch (error) {
+    if (!isDuplicateKeyError(error, 'relationshipKey')) throw error;
+    // Another request created the canonical conversation first. Reuse it
+    // rather than leaking a duplicate relationship chat into the UI.
+    return Conversation.findOne({ relationshipKey, mergedInto: null });
+  }
+};
+
+/**
+ * A doctor-patient chat opens exactly at the appointment start and stays open
+ * until the assigned doctor explicitly marks the conversation as completed.
+ */
+const assertAppointmentChatHasStarted = (appointment) => {
+  const start = getAppointmentStart(appointment);
+  if (new Date() < start) {
+    throw new Error('Chat will be available when the appointment time starts.');
+  }
+};
+
+const normalizeChatAttachments = (items) => (Array.isArray(items) ? items : [])
+  .map((attachment) => {
+    if (!attachment || typeof attachment !== 'object') return null;
+    const url = String(attachment.url || attachment.fileUrl || '').trim();
+    if (!url) return null;
+    const rawType = String(attachment.type || '').trim().toLowerCase();
+    return {
+      type: rawType === 'image' ? 'image' : 'file',
+      url,
+    };
+  })
+  .filter(Boolean);
+
+const assertConversationParticipant = (conversation, userId) => {
+  const participantIds = [conversation.doctorId, conversation.patientId, conversation.adminId]
+    .filter(Boolean)
+    .map((id) => getId(id));
+
+  if (!participantIds.includes(getId(userId))) {
+    const error = new Error('You do not have access to this conversation');
+    error.statusCode = 403;
+    throw error;
+  }
+};
+
+const resolveMergedConversation = async (conversation) => {
+  let resolvedConversation = conversation;
+  const visitedConversationIds = new Set();
+
+  while (resolvedConversation?.mergedInto) {
+    const currentId = String(resolvedConversation._id);
+    if (visitedConversationIds.has(currentId)) {
+      throw new Error('Conversation merge chain is invalid');
+    }
+    visitedConversationIds.add(currentId);
+    resolvedConversation = await Conversation.findById(resolvedConversation.mergedInto);
+  }
+
+  return resolvedConversation;
+};
+
+/**
+ * A doctor and patient have one continuous relationship conversation. Older
+ * appointment-specific records are soft-merged so their messages remain in
+ * the current chat without leaving duplicate rows in the chat list.
+ */
+const consolidateDoctorPatientConversations = async (doctorId, patientId, preferredAppointmentId = null) => {
+  const conversations = await Conversation.find({
+    doctorId,
+    patientId,
+    conversationType: 'DOCTOR_PATIENT',
+    mergedInto: null
+  }).sort({ lastMessageAt: -1, updatedAt: -1 });
+
+  if (conversations.length === 0) {
+    return Conversation.findOne({
+      relationshipKey: relationshipKeyFor(doctorId, patientId),
+      mergedInto: null,
+    });
+  }
+
+  const canonicalConversation =
+    conversations.find((conversation) => preferredAppointmentId && sameId(conversation.appointmentId, preferredAppointmentId)) ||
+    conversations.find((conversation) => conversation.status !== 'COMPLETED') ||
+    conversations[0];
+
+  const duplicateConversations = conversations.filter((conversation) => !sameId(conversation._id, canonicalConversation._id));
+  if (duplicateConversations.length === 0) {
+    return ensureRelationshipKey(canonicalConversation, doctorId, patientId);
+  }
+
+  const newestConversation = conversations.reduce((newest, conversation) => {
+    const newestTime = newest?.lastMessageAt ? new Date(newest.lastMessageAt).getTime() : 0;
+    const candidateTime = conversation.lastMessageAt ? new Date(conversation.lastMessageAt).getTime() : 0;
+    return candidateTime > newestTime ? conversation : newest;
+  }, canonicalConversation);
+
+  const duplicateIds = duplicateConversations.map((conversation) => conversation._id);
+  await ChatMessage.updateMany(
+    { conversationId: { $in: duplicateIds } },
+    { $set: { conversationId: canonicalConversation._id } }
+  );
+  await Conversation.updateMany(
+    { _id: { $in: duplicateIds } },
+    { $set: { mergedInto: canonicalConversation._id } }
+  );
+
+  if (newestConversation.lastMessageAt &&
+      (!canonicalConversation.lastMessageAt || new Date(newestConversation.lastMessageAt) > new Date(canonicalConversation.lastMessageAt))) {
+    canonicalConversation.lastMessageAt = newestConversation.lastMessageAt;
+    canonicalConversation.lastMessage = newestConversation.lastMessage;
+    await canonicalConversation.save();
+  }
+
+  return ensureRelationshipKey(canonicalConversation, doctorId, patientId);
+};
+
+const consolidateLegacyConversationsForUser = async (userId, userRole) => {
+  if (!mongoose.Types.ObjectId.isValid(userId)) return;
+  if (!['DOCTOR', 'PATIENT'].includes(userRole)) return;
+
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const userMatch = userRole === 'DOCTOR'
+    ? { doctorId: userObjectId }
+    : { patientId: userObjectId };
+
+  const duplicateRelationships = await Conversation.aggregate([
+    {
+      $match: {
+        ...userMatch,
+        conversationType: 'DOCTOR_PATIENT',
+        mergedInto: null
+      }
+    },
+    {
+      $group: {
+        _id: { doctorId: '$doctorId', patientId: '$patientId' },
+        count: { $sum: 1 }
+      }
+    },
+    { $match: { count: { $gt: 1 } } },
+    { $limit: 50 }
+  ]).option({ maxTimeMS: 3000 });
+
+  await Promise.all(duplicateRelationships.map(({ _id: relationship }) =>
+    consolidateDoctorPatientConversations(relationship.doctorId, relationship.patientId)
+  ));
+};
 
 /**
  * Send message
  * Supports both doctor-patient (with appointment) and admin-doctor (without appointment) conversations
- * @param {Object} data - Message data
- * @returns {Promise<Object>} Created message
  */
 const sendMessage = async (data) => {
-  const { doctorId, patientId, adminId, senderId, message, attachments, appointmentId } = data;
+  const { doctorId, patientId, adminId, senderId, message, attachments, appointmentId, conversationId } = data;
+  const normalizedAttachments = normalizeChatAttachments(attachments);
 
-  // Determine conversation type
   const isAdminDoctorChat = !!adminId;
-  const isDoctorPatientChat = !!patientId && !!appointmentId;
+  const isDoctorPatientChat = !!patientId;
 
   if (!isAdminDoctorChat && !isDoctorPatientChat) {
     throw new Error('Either admin-doctor or doctor-patient conversation must be specified');
   }
 
-  // Verify sender exists
   const sender = await User.findById(senderId);
   if (!sender) {
     throw new Error('Sender not found');
   }
 
   if (isAdminDoctorChat) {
-    // Admin-Doctor conversation (no appointment required)
     const [admin, doctor] = await Promise.all([
       User.findById(adminId),
       User.findById(doctorId)
@@ -44,12 +207,10 @@ const sendMessage = async (data) => {
       throw new Error('Doctor not found');
     }
 
-    // Verify sender is either admin or doctor
-    if (senderId !== adminId && senderId !== doctorId) {
+    if (!sameId(senderId, adminId) && !sameId(senderId, doctorId)) {
       throw new Error('Sender must be either admin or doctor');
     }
 
-    // Get or create admin-doctor conversation
     let conversation = await Conversation.findOne({
       adminId,
       doctorId,
@@ -68,24 +229,21 @@ const sendMessage = async (data) => {
       await conversation.save();
     }
 
-    // Check if doctor account is inactive
     if (doctor.status !== 'APPROVED') {
       throw new Error(`Doctor account is ${doctor.status.toLowerCase()}. Cannot send message to inactive doctor.`);
     }
 
-    // Create message
     const chatMessage = await ChatMessage.create({
       conversationId: conversation._id,
       adminId,
       doctorId,
       senderId,
       message: message || null,
-      attachments: attachments || null,
+      attachments: normalizedAttachments.length ? normalizedAttachments : null,
       isRead: false
     });
 
-    // Send notification to doctor if admin sent the message
-    if (senderId === adminId) {
+    if (sameId(senderId, adminId)) {
       try {
         await Notification.create({
           userId: doctorId,
@@ -108,131 +266,143 @@ const sendMessage = async (data) => {
           isRead: false
         });
       } catch (notificationError) {
-        // Log error but don't fail the message send
         console.error('Failed to create notification:', notificationError);
       }
     }
 
     return chatMessage;
-  } else {
-    // Doctor-Patient conversation (requires appointment)
-    const [doctor, patient] = await Promise.all([
-      User.findById(doctorId),
-      User.findById(patientId)
-    ]);
-
-    if (!doctor || doctor.role !== 'DOCTOR') {
-      throw new Error('Doctor not found');
-    }
-
-    if (!patient || patient.role !== 'PATIENT') {
-      throw new Error('Patient not found');
-    }
-
-    // Verify sender is either doctor or patient
-    if (senderId !== doctorId && senderId !== patientId) {
-      throw new Error('Sender must be either doctor or patient');
-    }
-
-    // REQUIRED: Check appointment access
-    if (!appointmentId) {
-      throw new Error('Appointment ID is required for doctor-patient communication');
-    }
-
-    const appointment = await Appointment.findById(appointmentId);
-    
-    if (!appointment) {
-      throw new Error('Appointment not found');
-    }
-
-    // Verify appointment belongs to this doctor and patient
-    if (appointment.doctorId.toString() !== doctorId || appointment.patientId.toString() !== patientId) {
-      throw new Error('Appointment does not match the provided doctor and patient');
-    }
-
-    // Check appointment status - must be CONFIRMED
-    if (appointment.status !== 'CONFIRMED') {
-      const statusMessages = {
-        'PENDING': 'Appointment is pending doctor acceptance. Communication will be available after the doctor accepts the appointment.',
-        'REJECTED': 'This appointment was rejected. Communication is not available.',
-        'CANCELLED': 'This appointment was cancelled. Communication is not available.',
-        'COMPLETED': 'This appointment has been completed. Communication is no longer available.',
-        'NO_SHOW': 'This appointment was marked as no-show. Communication is not available.'
-      };
-      throw new Error(statusMessages[appointment.status] || 'Communication is not available for this appointment status.');
-    }
-
-    // Check if current time is within the appointment window (timezone-aware)
-    const timeWindowCheck = isWithinAppointmentWindow(appointment);
-    if (!timeWindowCheck.isValid) {
-      throw new Error(timeWindowCheck.message || 'Communication is only available during the scheduled appointment time window.');
-    }
-
-    // Get or create conversation (link to appointment)
-    let conversation = await Conversation.findOne({
-      doctorId,
-      patientId,
-      appointmentId: appointment._id,
-      conversationType: 'DOCTOR_PATIENT'
-    });
-
-    if (!conversation) {
-      conversation = await Conversation.create({
-        doctorId,
-        patientId,
-        appointmentId: appointment._id,
-        conversationType: 'DOCTOR_PATIENT',
-        lastMessageAt: new Date()
-      });
-    } else {
-      conversation.lastMessageAt = new Date();
-      await conversation.save();
-    }
-
-    // Create message
-    const chatMessage = await ChatMessage.create({
-      conversationId: conversation._id,
-      doctorId,
-      patientId,
-      senderId,
-      appointmentId: appointment._id,
-      message: message || null,
-      attachments: attachments || null,
-      isRead: false
-    });
-
-    return chatMessage;
   }
+
+  // Doctor-Patient conversation
+  const [doctor, patient] = await Promise.all([
+    User.findById(doctorId),
+    User.findById(patientId)
+  ]);
+
+  if (!doctor || doctor.role !== 'DOCTOR') {
+    throw new Error('Doctor not found');
+  }
+
+  if (!patient || patient.role !== 'PATIENT') {
+    throw new Error('Patient not found');
+  }
+
+  if (!sameId(senderId, doctorId) && !sameId(senderId, patientId)) {
+    throw new Error('Sender must be either doctor or patient');
+  }
+
+  if (!appointmentId) {
+    throw new Error('Appointment ID is required for doctor-patient communication');
+  }
+
+  const appointment = await Appointment.findById(appointmentId);
+
+  if (!appointment) {
+    throw new Error('Appointment not found');
+  }
+
+  if (!sameId(appointment.doctorId, doctorId) || !sameId(appointment.patientId, patientId)) {
+    throw new Error('Appointment does not match the provided doctor and patient');
+  }
+
+  if (!['CONFIRMED', 'COMPLETED'].includes(appointment.status)) {
+    const statusMessages = {
+      PENDING_PAYMENT: 'Appointment payment is pending. Communication will be available after payment and doctor confirmation.',
+      PENDING: 'Appointment is pending doctor acceptance. Communication will be available after the doctor accepts the appointment.',
+      REJECTED: 'This appointment was rejected. Communication is not available.',
+      CANCELLED: 'This appointment was cancelled. Communication is not available.',
+      NO_SHOW: 'This appointment was marked as no-show. Communication is not available.'
+    };
+    throw new Error(statusMessages[appointment.status] || 'Communication is not available for this appointment status.');
+  }
+
+  assertAppointmentChatHasStarted(appointment);
+
+  let conversation = null;
+
+  if (conversationId) {
+    conversation = await Conversation.findById(conversationId);
+    conversation = await resolveMergedConversation(conversation);
+    if (!conversation || conversation.conversationType !== 'DOCTOR_PATIENT') {
+      throw new Error('Conversation not found');
+    }
+    if (
+      !sameId(conversation.doctorId, doctorId) ||
+      !sameId(conversation.patientId, patientId)
+    ) {
+      throw new Error('Conversation does not belong to this doctor and patient');
+    }
+  } else {
+    conversation = await consolidateDoctorPatientConversations(doctorId, patientId, appointment._id);
+  }
+
+  if (!conversation || !sameId(conversation.appointmentId, appointment._id)) {
+    conversation = await getOrCreateConversation(doctorId, patientId, null, appointment._id, senderId);
+  }
+
+  if (conversation.status === 'COMPLETED') {
+    const error = new Error('This chat has been marked as completed by the doctor. No further messages can be sent.');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const now = new Date();
+  conversation.lastMessageAt = now;
+  conversation.lastMessage = {
+    message: message || (normalizedAttachments.length ? 'Attachment' : ''),
+    sentAt: now,
+    sentBy: senderId
+  };
+  await conversation.save();
+
+  const chatMessage = await ChatMessage.create({
+    conversationId: conversation._id,
+    doctorId,
+    patientId,
+    senderId,
+    appointmentId: appointment._id,
+    message: message || null,
+    attachments: normalizedAttachments.length ? normalizedAttachments : null,
+    isRead: false
+  });
+
+  return chatMessage;
 };
 
 /**
  * Get messages for conversation
- * @param {string} conversationId - Conversation ID
- * @param {Object} options - Pagination options
- * @returns {Promise<Object>} Messages and pagination info
  */
-const getMessages = async (conversationId, options = {}) => {
+const getMessages = async (conversationId, userId, options = {}) => {
   const { page = 1, limit = 50 } = options;
 
-  const conversation = await Conversation.findById(conversationId);
-  
+  let conversation = await Conversation.findById(conversationId);
+  conversation = await resolveMergedConversation(conversation);
+
   if (!conversation) {
     throw new Error('Conversation not found');
   }
 
+  assertConversationParticipant(conversation, userId);
+
   const skip = (page - 1) * limit;
 
   const [messages, total] = await Promise.all([
-    ChatMessage.find({ conversationId })
+    ChatMessage.find({ conversationId: conversation._id })
       .populate('senderId', 'fullName profileImage role')
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 }),
-    ChatMessage.countDocuments({ conversationId })
+    ChatMessage.countDocuments({ conversationId: conversation._id })
   ]);
 
+  const responseConversation = await Conversation.findById(conversation._id)
+    .populate('doctorId', 'fullName email phone profileImage')
+    .populate('patientId', 'fullName email phone profileImage')
+    .populate('appointmentId', 'appointmentDate appointmentTime appointmentEndTime status');
+
   return {
-    messages: messages.reverse(), // Return in chronological order
+    messages: messages.reverse(),
+    conversation: responseConversation,
     pagination: {
       page,
       limit,
@@ -245,23 +415,16 @@ const getMessages = async (conversationId, options = {}) => {
 /**
  * Get or create conversation
  * Supports both doctor-patient (with appointment) and admin-doctor (without appointment) conversations
- * @param {string} doctorId - Doctor ID
- * @param {string} patientId - Patient ID (optional, for doctor-patient)
- * @param {string} adminId - Admin ID (optional, for admin-doctor - can be from token)
- * @param {string} appointmentId - Appointment ID (required for doctor-patient, optional for admin-doctor)
- * @returns {Promise<Object>} Conversation
  */
-const getOrCreateConversation = async (doctorId, patientId, adminId, appointmentId) => {
-  // Determine conversation type
+const getOrCreateConversation = async (doctorId, patientId, adminId, appointmentId, actorId = null) => {
   const isAdminDoctorChat = !!adminId;
-  const isDoctorPatientChat = !!patientId && !!appointmentId;
+  const isDoctorPatientChat = !!patientId;
 
   if (!isAdminDoctorChat && !isDoctorPatientChat) {
     throw new Error('Either admin-doctor or doctor-patient conversation must be specified');
   }
 
   if (isAdminDoctorChat) {
-    // Admin-Doctor conversation (no appointment required)
     const [admin, doctor] = await Promise.all([
       User.findById(adminId),
       User.findById(doctorId)
@@ -300,86 +463,129 @@ const getOrCreateConversation = async (doctorId, patientId, adminId, appointment
     }
 
     return conversation;
-  } else {
-    // Doctor-Patient conversation (requires appointment)
-    if (!appointmentId) {
-      throw new Error('Appointment ID is required for doctor-patient conversation');
-    }
+  }
 
-    // Verify appointment exists and is confirmed
-    const appointment = await Appointment.findById(appointmentId);
-    
-    if (!appointment) {
-      const error = new Error('Appointment not found');
-      error.statusCode = 404;
+  if (!appointmentId) {
+    throw new Error('Appointment ID is required for doctor-patient conversation');
+  }
+
+  const appointment = await Appointment.findById(appointmentId);
+
+  if (!appointment) {
+    const error = new Error('Appointment not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!sameId(appointment.doctorId, doctorId) || !sameId(appointment.patientId, patientId)) {
+    throw new Error('Appointment does not match the provided doctor and patient');
+  }
+
+  if (actorId && !sameId(actorId, doctorId) && !sameId(actorId, patientId)) {
+    throw new Error('You do not have access to this appointment chat');
+  }
+
+  // A conversation may have been created by an older version before the
+  // appointment began. Enforce the start rule for both existing and new chats.
+  assertAppointmentChatHasStarted(appointment);
+
+  // One ongoing relationship chat is reused for each future appointment.
+  // Any legacy appointment-specific conversations are merged into it first.
+  let conversation = await consolidateDoctorPatientConversations(doctorId, patientId, appointment._id);
+
+  const isNewAppointmentForConversation = conversation &&
+    !sameId(conversation.appointmentId?._id || conversation.appointmentId, appointment._id);
+
+  if (isNewAppointmentForConversation && !['CONFIRMED', 'COMPLETED'].includes(appointment.status)) {
+    throw new Error('Appointment must be confirmed before communication can begin');
+  }
+
+  if (conversation && conversation.status === 'COMPLETED') {
+    if (sameId(conversation.appointmentId?._id || conversation.appointmentId, appointment._id)) {
+      const error = new Error('This chat has been marked as completed by the doctor. No further messages can be sent.');
+      error.statusCode = 409;
       throw error;
     }
 
-    if (appointment.status !== 'CONFIRMED') {
+    conversation.status = 'ACTIVE';
+    conversation.completedAt = null;
+    conversation.completedBy = null;
+  }
+
+  if (!conversation) {
+    if (!['CONFIRMED', 'COMPLETED'].includes(appointment.status)) {
       throw new Error('Appointment must be confirmed before communication can begin');
     }
 
-    // Check if current time is within the appointment window (timezone-aware)
-    const timeWindowCheck = isWithinAppointmentWindow(appointment);
-    if (!timeWindowCheck.isValid) {
-      throw new Error(timeWindowCheck.message || 'Communication is only available during the scheduled appointment time window.');
-    }
+    await subscriptionPolicy.enforceChatStartLimit({ doctorId });
 
-    let conversation = await Conversation.findOne({
-      doctorId,
-      patientId,
-      appointmentId: appointment._id,
-      conversationType: 'DOCTOR_PATIENT'
-    })
-      .populate('doctorId', 'fullName email phone profileImage')
-      .populate('patientId', 'fullName email phone profileImage')
-      .populate('appointmentId', 'appointmentDate appointmentTime status');
-
-    if (!conversation) {
-      await subscriptionPolicy.enforceChatStartLimit({ doctorId });
-
+    try {
       conversation = await Conversation.create({
         doctorId,
         patientId,
         appointmentId: appointment._id,
         conversationType: 'DOCTOR_PATIENT',
+        relationshipKey: relationshipKeyFor(doctorId, patientId),
         lastMessageAt: new Date()
       });
-
-      await conversation.populate('doctorId', 'fullName email phone profileImage');
-      await conversation.populate('patientId', 'fullName email phone profileImage');
-      await conversation.populate('appointmentId', 'appointmentDate appointmentTime status');
+    } catch (error) {
+      if (!isDuplicateKeyError(error, 'relationshipKey')) throw error;
+      conversation = await Conversation.findOne({
+        relationshipKey: relationshipKeyFor(doctorId, patientId),
+        mergedInto: null,
+      });
+      if (!conversation) throw error;
     }
-
-    return conversation;
+    await conversation.populate('doctorId', 'fullName email phone profileImage');
+    await conversation.populate('patientId', 'fullName email phone profileImage');
+    await conversation.populate('appointmentId', 'appointmentDate appointmentTime status');
+  } else if (isNewAppointmentForConversation) {
+    conversation.appointmentId = appointment._id;
+    conversation.lastMessageAt = new Date();
+    await conversation.save();
+    await conversation.populate('doctorId', 'fullName email phone profileImage');
+    await conversation.populate('patientId', 'fullName email phone profileImage');
+    await conversation.populate('appointmentId', 'appointmentDate appointmentTime status');
+  } else {
+    await conversation.populate('doctorId', 'fullName email phone profileImage');
+    await conversation.populate('patientId', 'fullName email phone profileImage');
+    await conversation.populate('appointmentId', 'appointmentDate appointmentTime status');
+    if (conversation.isModified()) {
+      await conversation.save();
+    }
   }
+
+  return conversation;
 };
 
 /**
- * Get conversations for a user (admin or doctor)
- * @param {string} userId - User ID
- * @param {string} userRole - User role (ADMIN or DOCTOR)
- * @param {Object} options - Pagination options
- * @returns {Promise<Object>} Conversations and pagination info
+ * Get conversations for a user (admin, doctor or patient)
  */
 const getConversations = async (userId, userRole, options = {}) => {
   const { page = 1, limit = 20 } = options;
+
+  // One-time, lossless upgrade path for duplicate conversations created under
+  // the older appointment-per-chat behaviour.
+  await consolidateLegacyConversationsForUser(userId, userRole);
 
   let query = {};
 
   if (userRole === 'ADMIN') {
     query = { adminId: userId, conversationType: 'ADMIN_DOCTOR' };
   } else if (userRole === 'DOCTOR') {
-    // Doctor can see both admin-doctor and doctor-patient conversations
     query = {
       $or: [
         { doctorId: userId, conversationType: 'ADMIN_DOCTOR' },
         { doctorId: userId, conversationType: 'DOCTOR_PATIENT' }
       ]
     };
+  } else if (userRole === 'PATIENT') {
+    query = { patientId: userId, conversationType: 'DOCTOR_PATIENT' };
   } else {
-    throw new Error('Invalid role. Only ADMIN and DOCTOR can list conversations.');
+    throw new Error('Invalid role. Only ADMIN, DOCTOR and PATIENT can list conversations.');
   }
+
+  query = { ...query, mergedInto: null };
 
   const skip = (page - 1) * limit;
 
@@ -388,41 +594,37 @@ const getConversations = async (userId, userRole, options = {}) => {
       .populate('adminId', 'fullName email phone profileImage')
       .populate('doctorId', 'fullName email phone profileImage')
       .populate('patientId', 'fullName email phone profileImage')
-      .populate('appointmentId', 'appointmentDate appointmentTime status')
+      .populate('appointmentId', 'appointmentDate appointmentTime appointmentEndTime status')
       .sort({ lastMessageAt: -1 })
       .skip(skip)
       .limit(limit),
     Conversation.countDocuments(query)
   ]);
 
-  // Add unread message counts for each conversation
-  const conversationsWithUnread = await Promise.all(
-    conversations.map(async (conversation) => {
-      const conversationObj = conversation.toObject();
-      
-      // Count unread messages for the current user
-      const unreadQuery = {
-        conversationId: conversation._id,
-        isRead: false
-      };
-      
-      if (userRole === 'ADMIN') {
-        // Admin sees unread messages they haven't read (messages not sent by admin)
-        unreadQuery.senderId = { $ne: userId };
-      } else if (userRole === 'DOCTOR' && conversation.conversationType === 'ADMIN_DOCTOR') {
-        // Doctor sees unread messages they haven't read (messages not sent by doctor)
-        unreadQuery.senderId = { $ne: userId };
-      } else if (userRole === 'DOCTOR' && conversation.conversationType === 'DOCTOR_PATIENT') {
-        // For doctor-patient, count messages not sent by doctor
-        unreadQuery.senderId = { $ne: userId };
-      }
-      
-      const unreadCount = await ChatMessage.countDocuments(unreadQuery);
-      conversationObj.unreadCount = unreadCount;
-      
-      return conversationObj;
-    })
-  );
+  const conversationIds = conversations.map((conversation) => conversation._id);
+  const unreadAggregation = conversationIds.length > 0
+    ? await ChatMessage.aggregate([
+        {
+          $match: {
+            conversationId: { $in: conversationIds },
+            senderId: { $ne: new mongoose.Types.ObjectId(userId) },
+            isRead: false
+          }
+        },
+        { $group: { _id: '$conversationId', count: { $sum: 1 } } }
+      ])
+    : [];
+
+  const unreadMap = {};
+  unreadAggregation.forEach((entry) => {
+    unreadMap[entry._id.toString()] = entry.count;
+  });
+
+  const conversationsWithUnread = conversations.map((conversation) => {
+    const conversationObj = conversation.toObject();
+    conversationObj.unreadCount = unreadMap[conversation._id.toString()] || 0;
+    return conversationObj;
+  });
 
   return {
     conversations: conversationsWithUnread,
@@ -437,21 +639,20 @@ const getConversations = async (userId, userRole, options = {}) => {
 
 /**
  * Mark messages as read in a conversation
- * @param {string} conversationId - Conversation ID
- * @param {string} userId - User ID marking messages as read
- * @returns {Promise<Object>} Updated count
  */
 const markMessagesAsRead = async (conversationId, userId) => {
-  const conversation = await Conversation.findById(conversationId);
-  
+  let conversation = await Conversation.findById(conversationId);
+  conversation = await resolveMergedConversation(conversation);
+
   if (!conversation) {
     throw new Error('Conversation not found');
   }
 
-  // Mark all messages not sent by this user as read
+  assertConversationParticipant(conversation, userId);
+
   const result = await ChatMessage.updateMany(
     {
-      conversationId,
+      conversationId: conversation._id,
       senderId: { $ne: userId },
       isRead: false
     },
@@ -465,34 +666,76 @@ const markMessagesAsRead = async (conversationId, userId) => {
 
 /**
  * Get unread message count for a user
- * @param {string} userId - User ID
- * @param {string} userRole - User role (ADMIN or DOCTOR)
- * @returns {Promise<number>} Unread message count
  */
 const getUnreadCount = async (userId, userRole) => {
-  let query = {};
+  let conversationQuery = {};
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return 0;
+  }
 
   if (userRole === 'ADMIN') {
-    query = {
-      adminId: userId,
-      conversationType: 'ADMIN_DOCTOR',
-      isRead: false,
-      senderId: { $ne: userId }
-    };
+    conversationQuery = { adminId: userId, conversationType: 'ADMIN_DOCTOR' };
   } else if (userRole === 'DOCTOR') {
-    query = {
+    conversationQuery = {
       $or: [
         { doctorId: userId, conversationType: 'ADMIN_DOCTOR' },
         { doctorId: userId, conversationType: 'DOCTOR_PATIENT' }
-      ],
-      isRead: false,
-      senderId: { $ne: userId }
+      ]
     };
+  } else if (userRole === 'PATIENT') {
+    conversationQuery = { patientId: userId, conversationType: 'DOCTOR_PATIENT' };
   } else {
     return 0;
   }
 
-  return await ChatMessage.countDocuments(query);
+  conversationQuery = { ...conversationQuery, mergedInto: null };
+
+  const conversations = await Conversation.find(conversationQuery).select('_id');
+  const conversationIds = conversations.map((conversation) => conversation._id);
+
+  if (conversationIds.length === 0) return 0;
+
+  return ChatMessage.countDocuments({
+    conversationId: { $in: conversationIds },
+    senderId: { $ne: new mongoose.Types.ObjectId(userId) },
+    isRead: false
+  });
+};
+
+/**
+ * Mark conversation as completed (doctor only)
+ */
+const markConversationComplete = async (conversationId, doctorId) => {
+  let conversation = await Conversation.findById(conversationId);
+  conversation = await resolveMergedConversation(conversation);
+
+  if (!conversation) {
+    throw new Error('Conversation not found');
+  }
+
+  if (conversation.conversationType !== 'DOCTOR_PATIENT') {
+    throw new Error('Only doctor-patient conversations can be completed');
+  }
+
+  if (!sameId(conversation.doctorId, doctorId)) {
+    const error = new Error('Only the assigned doctor can mark this chat as completed');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (conversation.status === 'COMPLETED') {
+    const error = new Error('Conversation is already marked as completed');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  conversation.status = 'COMPLETED';
+  conversation.completedAt = new Date();
+  conversation.completedBy = doctorId;
+  await conversation.save();
+
+  return conversation;
 };
 
 module.exports = {
@@ -501,6 +744,6 @@ module.exports = {
   getOrCreateConversation,
   getConversations,
   markMessagesAsRead,
-  getUnreadCount
+  getUnreadCount,
+  markConversationComplete,
 };
-

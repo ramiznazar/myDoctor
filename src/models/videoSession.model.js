@@ -20,6 +20,42 @@ const videoSessionSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  callId: {
+    type: String,
+    default: null
+  },
+  status: {
+    type: String,
+    enum: ['RINGING', 'ACTIVE', 'ENDED', 'DECLINED', 'MISSED'],
+    default: 'RINGING'
+  },
+  initiatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null
+  },
+  acceptedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null
+  },
+  ringingAt: {
+    type: Date,
+    default: null
+  },
+  acceptedAt: {
+    type: Date,
+    default: null
+  },
+  endedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null
+  },
+  duration: {
+    type: Number,
+    default: null
+  },
   startedAt: {
     type: Date,
     default: null

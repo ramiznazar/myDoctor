@@ -9,12 +9,12 @@ const {
 const validate = require('../middleware/validate');
 const authGuard = require('../middleware/authGuard');
 const asyncHandler = require('../middleware/asyncHandler');
-const { requireAppointmentAccess } = require('../middleware/appointmentAccess');
 
 /**
  * @route   POST /api/chat/send
  * @desc    Send message
- *         - Doctor-Patient: requires confirmed appointment and appointment time must have started
+ *         - Doctor-Patient: chat opens at appointment start and is blocked
+ *           after the doctor marks the conversation as completed
  *         - Admin-Doctor: no appointment required, always available
  * @access  Private
  */
@@ -22,14 +22,6 @@ router.post(
   '/send',
   authGuard([]),
   validate(sendMessageValidator),
-  asyncHandler((req, res, next) => {
-    // Only apply appointment access check for doctor-patient conversations
-    if (req.body.patientId && req.body.appointmentId) {
-      return requireAppointmentAccess(req, res, next);
-    }
-    // Skip appointment check for admin-doctor conversations
-    next();
-  }),
   asyncHandler(chatController.sendMessage)
 );
 
@@ -47,19 +39,20 @@ router.get(
 
 /**
  * @route   GET /api/chat/conversations
- * @desc    Get all conversations for current user (admin or doctor)
- * @access  Private (Admin/Doctor)
+ * @desc    Get all conversations for current user (admin, doctor or patient)
+ * @access  Private (Admin/Doctor/Patient)
  */
 router.get(
   '/conversations',
-  authGuard(['ADMIN', 'DOCTOR']),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
   asyncHandler(chatController.getConversations)
 );
 
 /**
  * @route   POST /api/chat/conversation
  * @desc    Get or create conversation
- *         - Doctor-Patient: requires confirmed appointment and appointment time must have started
+ *         - Doctor-Patient: requires a confirmed appointment and the
+ *           appointment start time to have been reached
  *         - Admin-Doctor: no appointment required, always available
  * @access  Private
  */
@@ -67,14 +60,6 @@ router.post(
   '/conversation',
   authGuard([]),
   validate(createOrGetConversationValidator),
-  asyncHandler((req, res, next) => {
-    // Only apply appointment access check for doctor-patient conversations
-    if (req.body.patientId && req.body.appointmentId) {
-      return requireAppointmentAccess(req, res, next);
-    }
-    // Skip appointment check for admin-doctor conversations
-    next();
-  }),
   asyncHandler(chatController.getOrCreateConversation)
 );
 
@@ -90,15 +75,25 @@ router.put(
 );
 
 /**
+ * @route   POST /api/chat/conversations/:conversationId/complete
+ * @desc    Mark a doctor-patient conversation as completed (doctor only)
+ * @access  Private (Doctor)
+ */
+router.post(
+  '/conversations/:conversationId/complete',
+  authGuard(['DOCTOR']),
+  asyncHandler(chatController.markConversationComplete)
+);
+
+/**
  * @route   GET /api/chat/unread-count
  * @desc    Get unread message count for current user
- * @access  Private (Admin/Doctor)
+ * @access  Private (Admin/Doctor/Patient)
  */
 router.get(
   '/unread-count',
-  authGuard(['ADMIN', 'DOCTOR']),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
   asyncHandler(chatController.getUnreadCount)
 );
 
 module.exports = router;
-

@@ -1,8 +1,149 @@
 const Appointment = require('../models/appointment.model');
 const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
+const WeeklySchedule = require('../models/weeklySchedule.model');
+const { buildBookableSlots } = require('./weeklySchedule.service');
 const balanceService = require('./balance.service');
- const subscriptionPolicy = require('./subscriptionPolicy.service');
+const subscriptionPolicy = require('./subscriptionPolicy.service');
+const {
+  isIanaTimeZone,
+  getTimeZoneOffsetMinutes,
+  getAppointmentDateParts,
+  toUtcMidnight,
+  computeAppointmentWindow,
+  calculateEndClock,
+} = require('../utils/appointmentTime');
+
+const ACTIVE_APPOINTMENT_STATUSES = ['PENDING', 'PENDING_PAYMENT', 'CONFIRMED'];
+const DEFAULT_CURRENCY = 'EUR';
+
+const getId = (value) => (value?._id || value)?.toString?.() || String(value || '');
+const sameId = (left, right) => getId(left) === getId(right);
+
+const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+const activeSlotKeyFor = (doctorId, dateParts, appointmentTime) =>
+  `doctor:${getId(doctorId)}:date:${dateParts.year}-${String(dateParts.month).padStart(2, '0')}-${String(dateParts.day).padStart(2, '0')}:time:${appointmentTime}`;
+
+const releasesSlot = (status) => ['CANCELLED', 'COMPLETED', 'NO_SHOW', 'REJECTED', 'RESCHEDULED'].includes(String(status || '').toUpperCase());
+
+const parseUtcOffsetTimezone = (timezone) => {
+  const match = String(timezone || '').match(/^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+  if (!match) return null;
+  const sign = match[1] === '+' ? 1 : -1;
+  return sign * (Number(match[2]) * 60 + Number(match[3] || 0));
+};
+
+const normalizeTimezone = (timezone, timezoneOffset, dateParts) => {
+  const requestedOffset = Number(timezoneOffset);
+  const parsedOffset = parseUtcOffsetTimezone(timezone);
+
+  if (isIanaTimeZone(timezone)) {
+    const noon = new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, 12, 0, 0, 0));
+    const fallbackOffset = getTimeZoneOffsetMinutes(noon, timezone);
+    return {
+      timezone,
+      timezoneOffset: Number.isFinite(requestedOffset)
+        ? requestedOffset
+        : Number.isFinite(fallbackOffset)
+          ? fallbackOffset
+          : 0,
+    };
+  }
+
+  if (Number.isFinite(parsedOffset)) {
+    return {
+      timezone: timezone || null,
+      timezoneOffset: Number.isFinite(requestedOffset) ? requestedOffset : parsedOffset,
+    };
+  }
+
+  return {
+    timezone: null,
+    timezoneOffset: Number.isFinite(requestedOffset) ? requestedOffset : 0,
+  };
+};
+
+const resolvePricing = (doctor, bookingType, requestedServices = []) => {
+  const profile = doctor?.doctorProfile || doctor?.profile || null;
+  const configuredFee = bookingType === 'ONLINE'
+    ? profile?.consultationFees?.online
+    : profile?.consultationFees?.clinic;
+  const parsedFee = configuredFee === null || configuredFee === undefined || configuredFee === ''
+    ? NaN
+    : Number(configuredFee);
+  const consultationFee = Number.isFinite(parsedFee) && parsedFee >= 0 ? roundMoney(parsedFee) : 0;
+
+  const availableServices = Array.isArray(profile?.services) ? profile.services : [];
+  const requested = Array.isArray(requestedServices) ? requestedServices : [];
+  const normalizedNames = requested
+    .map((service) => {
+      if (typeof service === 'string') return service.trim();
+      if (service && typeof service === 'object') return String(service.name || '').trim();
+      return '';
+    })
+    .filter(Boolean);
+
+  const selectedServices = [];
+  for (const name of [...new Set(normalizedNames)]) {
+    const match = availableServices.find((service) => String(service?.name || '').trim().toLowerCase() === name.toLowerCase());
+    if (!match) {
+      const error = new Error(`Service "${name}" is not offered by this doctor`);
+      error.statusCode = 400;
+      throw error;
+    }
+    const price = Number(match.price);
+    selectedServices.push({
+      name: match.name,
+      price: Number.isFinite(price) && price >= 0 ? roundMoney(price) : 0,
+    });
+  }
+
+  const servicesTotal = selectedServices.reduce((total, service) => total + service.price, 0);
+  return {
+    consultationFee,
+    selectedServices,
+    servicesTotal: roundMoney(servicesTotal),
+    totalAmount: roundMoney(consultationFee + servicesTotal),
+    currency: DEFAULT_CURRENCY,
+  };
+};
+
+/**
+ * Build the authoritative price breakdown used by checkout.
+ * Client supplied amounts are never trusted.
+ */
+const getBookingQuote = async ({ doctorId, bookingType = 'VISIT', selectedServices = [] }) => {
+  if (!doctorId) {
+    const error = new Error('Doctor ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const doctor = await User.findById(doctorId).populate('doctorProfile');
+  if (!doctor || doctor.role !== 'DOCTOR') {
+    const error = new Error('Doctor not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!['VISIT', 'ONLINE'].includes(bookingType)) {
+    const error = new Error('Invalid booking type');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const weeklySchedule = await WeeklySchedule.findOne({ doctorId });
+  const pricing = resolvePricing(doctor, bookingType, selectedServices);
+
+  return {
+    doctorId: getId(doctor._id),
+    doctorName: doctor.fullName || doctor.email || 'Doctor',
+    bookingType,
+    appointmentDuration: weeklySchedule?.appointmentDuration || 30,
+    ...pricing,
+  };
+};
 
 /**
  * Create appointment
@@ -22,17 +163,17 @@ const createAppointment = async (data) => {
     createdBy,
     timezone,
     timezoneOffset,
-    status, // Optional: for rescheduled appointments
-    isRescheduled, // Optional: for rescheduled appointments
-    originalAppointmentId, // Optional: for rescheduled appointments
-    rescheduleFee, // Optional: for rescheduled appointments
-    rescheduleRequestId // Optional: for rescheduled appointments
+    selectedServices,
+    status,
+    isRescheduled,
+    originalAppointmentId,
+    rescheduleFee,
+    rescheduleRequestId,
   } = data;
 
-  // Verify doctor and patient exist
   const [doctor, patient] = await Promise.all([
     User.findById(doctorId).populate('doctorProfile'),
-    User.findById(patientId)
+    User.findById(patientId),
   ]);
 
   if (!doctor || doctor.role !== 'DOCTOR') {
@@ -43,174 +184,168 @@ const createAppointment = async (data) => {
     throw new Error('Patient not found');
   }
 
-  // Check if doctor is approved
   if (doctor.status !== 'APPROVED') {
     throw new Error('Doctor account is not approved. Please select an approved doctor.');
   }
 
-  // Check if doctor has active subscription
-  const hasActiveSubscription = doctor.subscriptionPlan && 
-                                doctor.subscriptionExpiresAt && 
-                                new Date(doctor.subscriptionExpiresAt) > new Date();
+  const hasActiveSubscription = doctor.subscriptionPlan &&
+    doctor.subscriptionExpiresAt &&
+    new Date(doctor.subscriptionExpiresAt) > new Date();
   if (!hasActiveSubscription) {
     throw new Error('Doctor does not have an active subscription. Please select another doctor.');
   }
 
   await subscriptionPolicy.enforceAppointmentBookingLimit({
     doctorId,
-    bookingType: bookingType || 'VISIT'
+    bookingType: bookingType || 'VISIT',
   });
 
-  // Check if doctor profile is completed
   if (doctor.doctorProfile && !doctor.doctorProfile.profileCompleted) {
     throw new Error('Doctor profile is incomplete. Please select another doctor.');
   }
 
-  // Check for double-booking (same doctor at same date/time)
-  const appointmentDateTime = new Date(appointmentDate);
-  const existingAppointment = await Appointment.findOne({
-    doctorId,
-    appointmentDate: {
-      $gte: new Date(appointmentDateTime.setHours(0, 0, 0, 0)),
-      $lt: new Date(appointmentDateTime.setHours(23, 59, 59, 999))
-    },
+  const dateParts = getAppointmentDateParts(appointmentDate);
+  const appointmentDateUtc = toUtcMidnight(dateParts);
+  const nextDateUtc = new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day + 1, 0, 0, 0, 0));
+  const previousDateUtc = new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day - 1, 0, 0, 0, 0));
+
+  // Validate the time before using it in conflict queries.
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(appointmentTime || ''))) {
+    throw new Error('Invalid appointment time');
+  }
+
+  // The weekly schedule is the authority for both duration and the actual
+  // selectable clock times. A client may only book an interval that the
+  // doctor explicitly opened in the schedule editor.
+  const weeklySchedule = await WeeklySchedule.findOne({ doctorId });
+  const duration = Number(weeklySchedule?.appointmentDuration) || Number(appointmentDuration) || 30;
+  if (!Number.isFinite(duration) || duration < 15 || duration > 480) {
+    throw new Error('Invalid appointment duration');
+  }
+
+  const bookableSlots = buildBookableSlots(weeklySchedule, dateParts);
+  const selectedSlot = bookableSlots.find((slot) => slot.startTime === appointmentTime && slot.duration === duration);
+  if (!selectedSlot) {
+    const error = new Error('The selected appointment time is no longer available. Please choose another slot.');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const normalizedTimezone = normalizeTimezone(timezone, timezoneOffset, dateParts);
+  const appointmentEndTime = calculateEndClock(appointmentTime, duration);
+  const windowProbe = {
+    appointmentDate: appointmentDateUtc,
     appointmentTime,
-    status: { $in: ['PENDING', 'CONFIRMED'] }
-  });
-
-  if (existingAppointment) {
-    throw new Error('Doctor is already booked at this time');
-  }
-
-  // Generate appointment number
-  const appointmentNumber = `APT-${Date.now()}`;
-
-  // Get appointment duration from doctor's weekly schedule or use provided/default
-  let duration = appointmentDuration || 30; // Default 30 minutes
-  if (!appointmentDuration) {
-    const WeeklySchedule = require('../models/weeklySchedule.model');
-    const weeklySchedule = await WeeklySchedule.findOne({ doctorId });
-    if (weeklySchedule && weeklySchedule.appointmentDuration) {
-      duration = weeklySchedule.appointmentDuration;
-    }
-  }
-
-  // Calculate appointment end time - parse date correctly to avoid timezone issues
-  // CRITICAL: Store date as local midnight to preserve the intended date
-  // Extract date components from appointmentDate (could be string or Date)
-  let year, month, day;
-  if (appointmentDate instanceof Date) {
-    // If it's already a Date, extract local date components
-    year = appointmentDate.getFullYear();
-    month = appointmentDate.getMonth();
-    day = appointmentDate.getDate();
-  } else {
-    // Parse date string (YYYY-MM-DD format) - extract components directly
-    const dateStr = appointmentDate.toString();
-    let dateOnly;
-    if (dateStr.includes('T')) {
-      dateOnly = dateStr.split('T')[0];
-    } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      dateOnly = dateStr;
-    } else {
-      // Fallback: try to parse as Date and get local components
-      const dateObj = new Date(appointmentDate);
-      year = dateObj.getFullYear();
-      month = dateObj.getMonth();
-      day = dateObj.getDate();
-      dateOnly = null; // Skip the split below
-    }
-    
-    if (dateOnly) {
-      [year, month, day] = dateOnly.split('-').map(Number);
-      month = month - 1; // JavaScript months are 0-indexed
-    }
-  }
-  
-  // CRITICAL: Create date at LOCAL midnight (not UTC) to preserve the intended date
-  // This ensures that when stored in MongoDB (as UTC), it represents the correct local date
-  const localMidnightDate = new Date(year, month, day, 0, 0, 0, 0);
-  
-  const [hours, minutes] = appointmentTime.split(':').map(Number);
-  // Create datetime using local timezone constructor
-  const appointmentStartDateTime = new Date(year, month, day, hours, minutes, 0, 0);
-  const appointmentEndDateTime = new Date(appointmentStartDateTime.getTime() + duration * 60 * 1000);
-  const appointmentEndTime = `${appointmentEndDateTime.getHours().toString().padStart(2, '0')}:${appointmentEndDateTime.getMinutes().toString().padStart(2, '0')}`;
-
-  // Generate video call link if online booking
-  let videoCallLink = null;
-  if (bookingType === 'ONLINE') {
-    videoCallLink = `https://videocall.mydoctor.com/${appointmentNumber}`;
-  }
-
-  // Calculate timezone offset if not provided (in minutes)
-  let tzOffset = timezoneOffset;
-  if ((tzOffset === null || tzOffset === undefined) && timezone) {
-    // Try to extract offset from timezone string (e.g., "UTC+5" -> 300 minutes)
-    const tzMatch = timezone.match(/UTC([+-])(\d+)/);
-    if (tzMatch) {
-      const sign = tzMatch[1] === '+' ? 1 : -1;
-      const hours = parseInt(tzMatch[2], 10);
-      tzOffset = sign * hours * 60;
-    }
-  }
-  
-  // If still no offset, try to get from current date (fallback)
-  if (tzOffset === null || tzOffset === undefined) {
-    const testDate = new Date();
-    tzOffset = -testDate.getTimezoneOffset(); // JavaScript offset is opposite of standard
-  }
-  
-  // Store the date as local midnight - this preserves the intended date regardless of timezone
-  const appointment = await Appointment.create({
-    doctorId,
-    patientId,
-    appointmentDate: localMidnightDate, // Store as local midnight, not UTC
-    appointmentTime,
-    appointmentDuration: duration,
     appointmentEndTime,
-    timezone: timezone || null,
-    timezoneOffset: tzOffset || null,
-    bookingType: bookingType || 'VISIT',
-    patientNotes,
-    clinicName,
-    videoCallLink,
-    appointmentNumber,
-    createdBy: createdBy || patientId,
-    status: status || 'PENDING', // Use provided status or default to PENDING
-    paymentStatus: status === 'PENDING_PAYMENT' ? 'UNPAID' : 'UNPAID', // For rescheduled appointments
-    isRescheduled: isRescheduled || false,
-    originalAppointmentId: originalAppointmentId || null,
-    rescheduleFee: rescheduleFee || null,
-    rescheduleRequestId: rescheduleRequestId || null
+    appointmentDuration: duration,
+    timezone: normalizedTimezone.timezone,
+    timezoneOffset: normalizedTimezone.timezoneOffset,
+  };
+  const { start: requestedStart, end: requestedEnd } = computeAppointmentWindow(windowProbe);
+
+  // Query a wide enough range to catch an overnight appointment from the
+  // previous day, then compare real UTC windows instead of raw clock strings.
+  const candidates = await Appointment.find({
+    doctorId,
+    appointmentDate: { $gte: previousDateUtc, $lt: nextDateUtc },
+    status: { $in: ACTIVE_APPOINTMENT_STATUSES },
+  }).select('appointmentDate appointmentTime appointmentEndTime appointmentDuration timezone timezoneOffset status');
+
+  const conflicting = candidates.find((candidate) => {
+    try {
+      const { start, end } = computeAppointmentWindow(candidate);
+      return requestedStart < end && requestedEnd > start;
+    } catch {
+      return false;
+    }
   });
 
-  // Create notifications for doctor and patient
-  const notificationService = require('./notification.service');
-  await Promise.all([
-    notificationService.createNotification({
-      userId: doctorId,
-      title: 'New Appointment Request',
-      body: `${patient.fullName} has requested an appointment on ${new Date(appointmentDate).toLocaleDateString()} at ${appointmentTime}`,
-      i18n: {
-        title: { it: 'Nuova richiesta di appuntamento' },
-        body: { it: `${patient.fullName} ha richiesto un appuntamento il ${new Date(appointmentDate).toLocaleDateString('it-IT')} alle ${appointmentTime}` },
-      },
-      type: 'APPOINTMENT',
-      data: { appointmentId: appointment._id }
-    }),
-    notificationService.createNotification({
-      userId: patientId,
-      title: 'Appointment Requested',
-      body: `Your appointment request with Dr. ${doctor.fullName} is pending confirmation`,
-      i18n: {
-        title: { it: 'Appuntamento richiesto' },
-        body: { it: `La tua richiesta di appuntamento con il Dott. ${doctor.fullName} è in attesa di conferma` },
-      },
-      type: 'APPOINTMENT',
-      data: { appointmentId: appointment._id }
-    })
-  ]);
+  if (conflicting) {
+    const error = new Error('Doctor is already booked at this time');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const pricing = resolvePricing(doctor, bookingType || 'VISIT', selectedServices);
+  const appointmentNumber = `APT-${Date.now()}`;
+  const videoCallLink = bookingType === 'ONLINE'
+    ? `https://videocall.mydoctor.com/${appointmentNumber}`
+    : null;
+
+  const requestedStatus = String(status || '').toUpperCase();
+  const allowedInitialStatuses = ['PENDING_PAYMENT', 'PENDING', 'CONFIRMED', 'RESCHEDULED'];
+  const initialStatus = allowedInitialStatuses.includes(requestedStatus) ? requestedStatus : 'PENDING_PAYMENT';
+
+  let appointment;
+  try {
+    appointment = await Appointment.create({
+      doctorId,
+      patientId,
+      appointmentDate: appointmentDateUtc,
+      appointmentTime,
+      appointmentDuration: duration,
+      appointmentEndTime,
+      activeSlotKey: activeSlotKeyFor(doctorId, dateParts, appointmentTime),
+      consultationFee: pricing.consultationFee,
+      selectedServices: pricing.selectedServices,
+      totalAmount: pricing.totalAmount,
+      currency: pricing.currency,
+      timezone: normalizedTimezone.timezone,
+      timezoneOffset: normalizedTimezone.timezoneOffset,
+      bookingType: bookingType || 'VISIT',
+      patientNotes,
+      clinicName,
+      videoCallLink,
+      appointmentNumber,
+      createdBy: createdBy || patientId,
+      status: initialStatus,
+      paymentStatus: 'UNPAID',
+      isRescheduled: isRescheduled || false,
+      originalAppointmentId: originalAppointmentId || null,
+      rescheduleFee: rescheduleFee || null,
+      rescheduleRequestId: rescheduleRequestId || null,
+    });
+  } catch (error) {
+    if (error?.code === 11000 && error?.keyPattern?.activeSlotKey) {
+      const conflict = new Error('This appointment time was just booked. Please choose another slot.');
+      conflict.statusCode = 409;
+      throw conflict;
+    }
+    throw error;
+  }
+
+  // Notifications are best effort; a notification failure must not hide a
+  // successfully stored appointment or payment.
+  try {
+    const notificationService = require('./notification.service');
+    const dateLabel = new Date(appointmentDateUtc).toLocaleDateString();
+    await Promise.all([
+      notificationService.createNotification({
+        userId: doctorId,
+        title: 'New Appointment Request',
+        body: `${patient.fullName} has requested an appointment on ${dateLabel} at ${appointmentTime}`,
+        i18n: {
+          title: { it: 'Nuova richiesta di appuntamento' },
+          body: { it: `${patient.fullName} ha richiesto un appuntamento il ${new Date(appointmentDateUtc).toLocaleDateString('it-IT')} alle ${appointmentTime}` },
+        },
+        type: 'APPOINTMENT',
+        data: { appointmentId: appointment._id },
+      }),
+      notificationService.createNotification({
+        userId: patientId,
+        title: 'Appointment Requested',
+        body: `Your appointment request with Dr. ${doctor.fullName} is pending confirmation`,
+        i18n: {
+          title: { it: 'Appuntamento richiesto' },
+          body: { it: `La tua richiesta di appuntamento con il Dott. ${doctor.fullName} è in attesa di conferma` },
+        },
+        type: 'APPOINTMENT',
+        data: { appointmentId: appointment._id },
+      }),
+    ]);
+  } catch (notificationError) {
+    console.error('Failed to create appointment notifications:', notificationError);
+  }
 
   return appointment;
 };
@@ -221,23 +356,46 @@ const createAppointment = async (data) => {
  * @param {Object} statusData - Status update data
  * @returns {Promise<Object>} Updated appointment
  */
-const updateAppointmentStatus = async (id, statusData) => {
+const updateAppointmentStatus = async (id, statusData, actor = null) => {
   const appointment = await Appointment.findById(id)
     .populate('doctorId', 'fullName email')
     .populate('patientId', 'fullName email');
-  
+
   if (!appointment) {
     throw new Error('Appointment not found');
   }
 
+  const actorRole = String(actor?.role || '').toUpperCase();
+  const actorId = getId(actor?.userId);
+  if (actorRole !== 'ADMIN') {
+    if (actorRole !== 'DOCTOR' || !sameId(appointment.doctorId, actorId)) {
+      const error = new Error('You are not allowed to update this appointment');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (!['COMPLETED', 'NO_SHOW'].includes(String(statusData.status || '').toUpperCase()) ||
+        statusData.paymentStatus !== undefined || statusData.paymentMethod !== undefined) {
+      const error = new Error('Doctors can only mark their confirmed appointments as completed or no-show');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (appointment.status !== 'CONFIRMED') {
+      throw new Error(`Cannot update an appointment with status: ${appointment.status}`);
+    }
+  }
+
   const { status, paymentStatus, paymentMethod, notes } = statusData;
+  const previousStatus = appointment.status;
 
   if (status) {
-    const validStatuses = ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'NO_SHOW', 'REJECTED'];
+    const validStatuses = ['PENDING', 'PENDING_PAYMENT', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'NO_SHOW', 'REJECTED'];
     if (!validStatuses.includes(status)) {
       throw new Error('Invalid appointment status');
     }
     appointment.status = status;
+    if (releasesSlot(status)) {
+      appointment.activeSlotKey = undefined;
+    }
   }
 
   if (paymentStatus) {
@@ -256,29 +414,25 @@ const updateAppointmentStatus = async (id, statusData) => {
     appointment.notes = notes;
   }
 
-  const previousStatus = appointment.status;
   await appointment.save();
 
-  // Credit doctor balance when appointment is completed and payment is PAID
+  // Credit doctor balance when appointment is completed and payment is PAID.
   if (status === 'COMPLETED' && appointment.paymentStatus === 'PAID' && previousStatus !== 'COMPLETED') {
     try {
-      // Find the transaction related to this appointment
       const transaction = await Transaction.findOne({
         relatedAppointmentId: appointment._id,
-        status: 'SUCCESS'
-      }).sort({ createdAt: -1 }); // Get the most recent successful transaction
+        status: 'SUCCESS',
+      }).sort({ createdAt: -1 });
 
       if (transaction && transaction.amount > 0) {
-        // Check if balance was already credited (avoid double crediting)
         const existingCreditTransaction = await Transaction.findOne({
           userId: appointment.doctorId._id,
           'metadata.type': 'BALANCE_CREDIT',
           'metadata.transactionType': 'APPOINTMENT',
-          'metadata.appointmentId': appointment._id.toString()
+          'metadata.appointmentId': appointment._id.toString(),
         });
 
         if (!existingCreditTransaction) {
-          // Credit doctor balance
           await balanceService.creditBalance(
             appointment.doctorId._id.toString(),
             transaction.amount,
@@ -286,25 +440,22 @@ const updateAppointmentStatus = async (id, statusData) => {
             {
               appointmentId: appointment._id.toString(),
               appointmentNumber: appointment.appointmentNumber,
-              transactionId: transaction._id.toString()
+              transactionId: transaction._id.toString(),
             }
           );
         }
       }
     } catch (error) {
-      // Log error but don't fail the status update
       console.error('Error crediting doctor balance for completed appointment:', error);
-      // You might want to add a retry mechanism or notification here
     }
   }
 
-  // Create notification for patient when doctor accepts/rejects
   if (status === 'CONFIRMED' || status === 'REJECTED') {
     const notificationService = require('./notification.service');
-    const statusMessage = status === 'CONFIRMED' 
+    const statusMessage = status === 'CONFIRMED'
       ? `Your appointment with Dr. ${appointment.doctorId.fullName} has been confirmed`
       : `Your appointment with Dr. ${appointment.doctorId.fullName} has been rejected`;
-    
+
     await notificationService.createNotification({
       userId: appointment.patientId._id.toString(),
       title: status === 'CONFIRMED' ? 'Appointment Confirmed' : 'Appointment Rejected',
@@ -318,7 +469,7 @@ const updateAppointmentStatus = async (id, statusData) => {
         },
       },
       type: 'APPOINTMENT',
-      data: { appointmentId: appointment._id }
+      data: { appointmentId: appointment._id },
     });
   }
 
@@ -327,13 +478,10 @@ const updateAppointmentStatus = async (id, statusData) => {
 
 /**
  * Accept appointment (doctor action)
- * @param {string} appointmentId - Appointment ID
- * @param {string} doctorId - Doctor user ID
- * @returns {Promise<Object>} Updated appointment
  */
 const acceptAppointment = async (appointmentId, doctorId) => {
   const appointment = await Appointment.findById(appointmentId);
-  
+
   if (!appointment) {
     throw new Error('Appointment not found');
   }
@@ -349,11 +497,8 @@ const acceptAppointment = async (appointmentId, doctorId) => {
   appointment.status = 'CONFIRMED';
   await appointment.save();
 
-  // Create notification
   const notificationService = require('./notification.service');
-  const User = require('../models/user.model');
   const doctor = await User.findById(doctorId);
-  const patient = await User.findById(appointment.patientId);
 
   await notificationService.createNotification({
     userId: appointment.patientId.toString(),
@@ -364,7 +509,7 @@ const acceptAppointment = async (appointmentId, doctorId) => {
       body: { it: `Il tuo appuntamento con il Dott. ${doctor.fullName} è stato confermato` },
     },
     type: 'APPOINTMENT',
-    data: { appointmentId: appointment._id }
+    data: { appointmentId: appointment._id },
   });
 
   return appointment;
@@ -372,14 +517,10 @@ const acceptAppointment = async (appointmentId, doctorId) => {
 
 /**
  * Reject appointment (doctor action)
- * @param {string} appointmentId - Appointment ID
- * @param {string} doctorId - Doctor user ID
- * @param {string} reason - Optional rejection reason
- * @returns {Promise<Object>} Updated appointment
  */
 const rejectAppointment = async (appointmentId, doctorId, reason = null) => {
   const appointment = await Appointment.findById(appointmentId);
-  
+
   if (!appointment) {
     throw new Error('Appointment not found');
   }
@@ -393,16 +534,14 @@ const rejectAppointment = async (appointmentId, doctorId, reason = null) => {
   }
 
   appointment.status = 'REJECTED';
+  appointment.activeSlotKey = undefined;
   if (reason) {
     appointment.notes = reason;
   }
   await appointment.save();
 
-  // Create notification
   const notificationService = require('./notification.service');
-  const User = require('../models/user.model');
   const doctor = await User.findById(doctorId);
-  const patient = await User.findById(appointment.patientId);
 
   await notificationService.createNotification({
     userId: appointment.patientId.toString(),
@@ -413,7 +552,7 @@ const rejectAppointment = async (appointmentId, doctorId, reason = null) => {
       body: { it: `Il tuo appuntamento con il Dott. ${doctor.fullName} è stato rifiutato${reason ? ': ' + reason : ''}` },
     },
     type: 'APPOINTMENT',
-    data: { appointmentId: appointment._id }
+    data: { appointmentId: appointment._id },
   });
 
   return appointment;
@@ -421,16 +560,12 @@ const rejectAppointment = async (appointmentId, doctorId, reason = null) => {
 
 /**
  * Cancel appointment (patient action)
- * @param {string} appointmentId - Appointment ID
- * @param {string} patientId - Patient user ID
- * @param {string} reason - Optional cancellation reason
- * @returns {Promise<Object>} Updated appointment
  */
 const cancelAppointment = async (appointmentId, patientId, reason = null) => {
   const appointment = await Appointment.findById(appointmentId)
     .populate('doctorId', 'fullName email')
     .populate('patientId', 'fullName email');
-  
+
   if (!appointment) {
     throw new Error('Appointment not found');
   }
@@ -439,27 +574,22 @@ const cancelAppointment = async (appointmentId, patientId, reason = null) => {
     throw new Error('Unauthorized: This appointment does not belong to you');
   }
 
-  // Check if appointment can be cancelled (not already completed or cancelled)
-  if (['COMPLETED', 'CANCELLED'].includes(appointment.status)) {
+  if (['COMPLETED', 'CANCELLED', 'REJECTED'].includes(appointment.status)) {
     throw new Error(`Cannot cancel appointment with status: ${appointment.status}`);
   }
 
-  // Check if appointment time has passed
-  const appointmentDateTime = new Date(appointment.appointmentDate);
-  const [hours, minutes] = appointment.appointmentTime.split(':');
-  appointmentDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-  
-  if (appointmentDateTime < new Date()) {
+  const { start } = computeAppointmentWindow(appointment);
+  if (start < new Date()) {
     throw new Error('Cannot cancel appointment that has already passed');
   }
 
   appointment.status = 'CANCELLED';
+  appointment.activeSlotKey = undefined;
   if (reason) {
     appointment.notes = reason;
   }
   await appointment.save();
 
-  // Create notification for doctor
   const notificationService = require('./notification.service');
   await notificationService.createNotification({
     userId: appointment.doctorId._id.toString(),
@@ -470,7 +600,7 @@ const cancelAppointment = async (appointmentId, patientId, reason = null) => {
       body: { it: `${appointment.patientId.fullName} ha annullato l'appuntamento${reason ? ': ' + reason : ''}` },
     },
     type: 'APPOINTMENT',
-    data: { appointmentId: appointment._id }
+    data: { appointmentId: appointment._id },
   });
 
   return appointment;
@@ -478,8 +608,6 @@ const cancelAppointment = async (appointmentId, patientId, reason = null) => {
 
 /**
  * List appointments with filtering
- * @param {Object} filter - Filter criteria
- * @returns {Promise<Object>} Appointments and pagination info
  */
 const listAppointments = async (filter = {}) => {
   const {
@@ -489,31 +617,19 @@ const listAppointments = async (filter = {}) => {
     fromDate,
     toDate,
     page = 1,
-    limit = 10
+    limit = 10,
   } = filter;
 
   const query = {};
 
-  if (doctorId) {
-    query.doctorId = doctorId;
-  }
-
-  if (patientId) {
-    query.patientId = patientId;
-  }
-
-  if (status) {
-    query.status = status.toUpperCase();
-  }
+  if (doctorId) query.doctorId = doctorId;
+  if (patientId) query.patientId = patientId;
+  if (status) query.status = status.toUpperCase();
 
   if (fromDate || toDate) {
     query.appointmentDate = {};
-    if (fromDate) {
-      query.appointmentDate.$gte = new Date(fromDate);
-    }
-    if (toDate) {
-      query.appointmentDate.$lte = new Date(toDate);
-    }
+    if (fromDate) query.appointmentDate.$gte = new Date(fromDate);
+    if (toDate) query.appointmentDate.$lte = new Date(toDate);
   }
 
   const skip = (page - 1) * limit;
@@ -525,7 +641,7 @@ const listAppointments = async (filter = {}) => {
       .skip(skip)
       .limit(limit)
       .sort({ appointmentDate: -1, appointmentTime: -1 }),
-    Appointment.countDocuments(query)
+    Appointment.countDocuments(query),
   ]);
 
   return {
@@ -534,24 +650,31 @@ const listAppointments = async (filter = {}) => {
       page,
       limit,
       total,
-      pages: Math.ceil(total / limit)
-    }
+      pages: Math.ceil(total / limit),
+    },
   };
 };
 
 /**
  * Get appointment by ID
- * @param {string} id - Appointment ID
- * @returns {Promise<Object>} Appointment
  */
-const getAppointment = async (id) => {
+const getAppointment = async (id, actor = null) => {
   const appointment = await Appointment.findById(id)
     .populate('doctorId', 'fullName email phone profileImage')
     .populate('patientId', 'fullName email phone profileImage')
     .populate('videoSessionId');
-  
+
   if (!appointment) {
     throw new Error('Appointment not found');
+  }
+
+  const actorRole = String(actor?.role || '').toUpperCase();
+  const actorId = getId(actor?.userId);
+  const isParticipant = sameId(appointment.doctorId, actorId) || sameId(appointment.patientId, actorId);
+  if (actorRole !== 'ADMIN' && !isParticipant) {
+    const error = new Error('You do not have access to this appointment');
+    error.statusCode = 403;
+    throw error;
   }
 
   return appointment;
@@ -559,11 +682,11 @@ const getAppointment = async (id) => {
 
 module.exports = {
   createAppointment,
+  getBookingQuote,
   updateAppointmentStatus,
   listAppointments,
   getAppointment,
   acceptAppointment,
   rejectAppointment,
-  cancelAppointment
+  cancelAppointment,
 };
-

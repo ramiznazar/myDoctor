@@ -1,5 +1,108 @@
 const WeeklySchedule = require('../models/weeklySchedule.model');
 const Appointment = require('../models/appointment.model');
+const { toUtcMidnight } = require('../utils/appointmentTime');
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const ACTIVE_APPOINTMENT_STATUSES = ['PENDING', 'PENDING_PAYMENT', 'CONFIRMED'];
+
+const clockToMinutes = (value) => {
+  const match = String(value || '').match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const minutesToClock = (minutes) => {
+  const normalized = ((minutes % 1440) + 1440) % 1440;
+  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+};
+
+const parseCalendarDate = (date) => {
+  const match = String(date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    throw new Error('Date must be in YYYY-MM-DD format');
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) {
+    throw new Error('Invalid calendar date');
+  }
+  return { year, month, day };
+};
+
+const dayScheduleFor = (schedule, dateParts) => {
+  const weekday = DAY_NAMES[new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day)).getUTCDay()];
+  return schedule?.days?.find((day) => day.dayOfWeek === weekday) || null;
+};
+
+const effectiveDuration = (schedule) => Number(schedule?.appointmentDuration) || 30;
+
+/**
+ * Expand a doctor's availability ranges into real bookable appointments.
+ * A range such as 09:00–12:00 with 30 minute consultations deliberately
+ * returns 09:00, 09:30, 10:00, ... rather than treating the full range as one
+ * slot. This is the same schedule representation used by the doctor editor.
+ */
+const buildBookableSlots = (schedule, dateParts) => {
+  const daySchedule = dayScheduleFor(schedule, dateParts);
+  if (!daySchedule?.timeSlots?.length) return [];
+
+  const duration = effectiveDuration(schedule);
+  const slots = [];
+  const seen = new Set();
+
+  for (const range of daySchedule.timeSlots) {
+    if (!range.isAvailable) continue;
+    const rangeStart = clockToMinutes(range.startTime);
+    const rangeEnd = clockToMinutes(range.endTime);
+    if (rangeStart === null || rangeEnd === null || rangeEnd <= rangeStart) continue;
+
+    for (let start = rangeStart; start + duration <= rangeEnd; start += duration) {
+      const startTime = minutesToClock(start);
+      if (seen.has(startTime)) continue;
+      seen.add(startTime);
+      slots.push({ startTime, endTime: minutesToClock(start + duration), duration });
+    }
+  }
+
+  return slots.sort((left, right) => clockToMinutes(left.startTime) - clockToMinutes(right.startTime));
+};
+
+const appointmentIntervalForDate = (appointment, targetDate) => {
+  const appointmentDate = new Date(appointment.appointmentDate);
+  const targetDateMs = toUtcMidnight(targetDate).getTime();
+  const appointmentDateMs = Date.UTC(
+    appointmentDate.getUTCFullYear(),
+    appointmentDate.getUTCMonth(),
+    appointmentDate.getUTCDate()
+  );
+  let start = clockToMinutes(appointment.appointmentTime);
+  if (start === null) return null;
+  let end = clockToMinutes(appointment.appointmentEndTime);
+  if (end === null || end <= start) end = start + (Number(appointment.appointmentDuration) || 30);
+
+  // An appointment that began late on the preceding day can occupy the first
+  // slots of this day. Shift its interval onto the target-day timeline.
+  if (appointmentDateMs < targetDateMs) {
+    start -= 1440;
+    end -= 1440;
+  }
+  return { start, end };
+};
+
+const isSlotFree = (slot, appointments, dateParts) => {
+  const slotStart = clockToMinutes(slot.startTime);
+  const slotEnd = clockToMinutes(slot.endTime);
+  return !appointments.some((appointment) => {
+    const interval = appointmentIntervalForDate(appointment, dateParts);
+    return interval && slotStart < interval.end && slotEnd > interval.start;
+  });
+};
 
 /**
  * Create or update weekly schedule for a day
@@ -192,56 +295,25 @@ const getAvailableSlotsForDate = async (doctorId, date) => {
     return [];
   }
 
-  // Parse date and get day of week
-  const [year, month, day] = date.split('-').map(Number);
-  const targetDate = new Date(year, month - 1, day);
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayOfWeek = dayNames[targetDate.getDay()];
+  const dateParts = parseCalendarDate(date);
+  const bookableSlots = buildBookableSlots(schedule, dateParts);
+  if (bookableSlots.length === 0) return [];
 
-  // Find day schedule
-  const daySchedule = schedule.days.find(day => day.dayOfWeek === dayOfWeek);
+  const previousDay = new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day - 1));
+  const endOfDay = new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day + 1));
 
-  if (!daySchedule || !daySchedule.timeSlots || daySchedule.timeSlots.length === 0) {
-    return [];
-  }
-
-  // Create date range for the entire day
-  const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
-  const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
-
-  // Get appointments for this date
+  // Include the previous calendar day so an overnight legacy appointment can
+  // never expose an overlapping early-morning slot.
   const appointments = await Appointment.find({
     doctorId,
     appointmentDate: {
-      $gte: startOfDay,
-      $lte: endOfDay
+      $gte: previousDay,
+      $lt: endOfDay
     },
-    status: { $in: ['PENDING', 'CONFIRMED'] }
+    status: { $in: ACTIVE_APPOINTMENT_STATUSES }
   });
 
-  // Extract booked time slots
-  const bookedSlots = appointments.map(apt => apt.appointmentTime);
-
-  // Filter available slots (not booked and marked as available)
-  const availableSlots = daySchedule.timeSlots
-    .filter(slot => {
-      if (!slot.isAvailable) return false;
-      
-      // Check if slot is booked
-      const isBooked = bookedSlots.some(bookedTime => {
-        // Simple comparison - can be enhanced for slot overlap checking
-        return bookedTime === slot.startTime;
-      });
-
-      return !isBooked;
-    })
-    .map(slot => ({
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      duration: schedule.appointmentDuration
-    }));
-
-  return availableSlots;
+  return bookableSlots.filter((slot) => isSlotFree(slot, appointments, dateParts));
 };
 
 module.exports = {
@@ -251,6 +323,10 @@ module.exports = {
   addTimeSlot,
   updateTimeSlot,
   deleteTimeSlot,
-  getAvailableSlotsForDate
+  getAvailableSlotsForDate,
+  // Exported for appointment creation and direct unit testing. The API still
+  // exposes only getAvailableSlotsForDate.
+  buildBookableSlots,
+  parseCalendarDate,
 };
 

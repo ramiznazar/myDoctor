@@ -151,7 +151,13 @@ const attachPolicyToPlan = (planDoc, targetRole = TARGET_ROLES.DOCTOR) => {
   };
 };
 
-const ensureFixedPlansExist = async (targetRole = TARGET_ROLES.DOCTOR) => {
+// Fixed-plan reconciliation is invoked as part of booking and chat checks.
+// Keep one in-flight reconciliation per role so simultaneous bookings cannot
+// update the same plan document (and fail with a Mongoose VersionError) before
+// appointment slot protection has a chance to run.
+const fixedPlanInitialization = new Map();
+
+const reconcileFixedPlans = async (targetRole = TARGET_ROLES.DOCTOR) => {
   const role = String(targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
   const fixedNames = getFixedPlanNames(role);
   const aliases = getPlanAliases(role);
@@ -284,6 +290,17 @@ const ensureFixedPlansExist = async (targetRole = TARGET_ROLES.DOCTOR) => {
   }
 
   return createdOrUpdated;
+};
+
+const ensureFixedPlansExist = async (targetRole = TARGET_ROLES.DOCTOR) => {
+  const role = String(targetRole || TARGET_ROLES.DOCTOR).toUpperCase();
+  const inFlight = fixedPlanInitialization.get(role);
+  if (inFlight) return inFlight;
+
+  const task = reconcileFixedPlans(role)
+    .finally(() => fixedPlanInitialization.delete(role));
+  fixedPlanInitialization.set(role, task);
+  return task;
 };
 
 const enforcePharmacySubscriptionActive = async ({ pharmacyUserId }) => {

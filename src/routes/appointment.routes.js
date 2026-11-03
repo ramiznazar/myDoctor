@@ -3,6 +3,7 @@ const router = express.Router();
 const appointmentController = require('../controllers/appointment.controller');
 const {
   createAppointmentValidator,
+  bookingQuoteValidator,
   updateAppointmentStatusValidator,
   filterAppointmentsValidator
 } = require('../validators/appointment.validators');
@@ -11,13 +12,25 @@ const authGuard = require('../middleware/authGuard');
 const asyncHandler = require('../middleware/asyncHandler');
 
 /**
+ * @route   POST /api/appointment/quote
+ * @desc    Get server-calculated checkout quote
+ * @access  Private (Patient)
+ */
+router.post(
+  '/quote',
+  authGuard(['PATIENT', 'ADMIN']),
+  validate(bookingQuoteValidator),
+  asyncHandler(appointmentController.getQuote)
+);
+
+/**
  * @route   POST /api/appointment
  * @desc    Create appointment
  * @access  Private
  */
 router.post(
   '/',
-  authGuard([]),
+  authGuard(['PATIENT']),
   validate(createAppointmentValidator),
   asyncHandler(appointmentController.create)
 );
@@ -29,7 +42,7 @@ router.post(
  */
 router.put(
   '/:id/status',
-  authGuard([]),
+  authGuard(['DOCTOR', 'ADMIN']),
   validate(updateAppointmentStatusValidator),
   asyncHandler(appointmentController.updateStatus)
 );
@@ -44,7 +57,7 @@ router.put(
  */
 router.get(
   '/',
-  authGuard([]),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
   validate(filterAppointmentsValidator),
   asyncHandler(appointmentController.list)
 );
@@ -56,7 +69,7 @@ router.get(
  */
 router.get(
   '/:id',
-  authGuard([]),
+  authGuard(['ADMIN', 'DOCTOR', 'PATIENT']),
   asyncHandler(appointmentController.getById)
 );
 

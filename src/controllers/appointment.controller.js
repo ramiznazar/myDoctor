@@ -7,9 +7,20 @@ const appointmentService = require('../services/appointment.service');
 exports.create = asyncHandler(async (req, res) => {
   const appointmentData = {
     ...req.body,
-    createdBy: req.userId
+    createdBy: req.userId,
   };
+  if (req.userRole === 'PATIENT') {
+    appointmentData.patientId = req.userId;
+  }
   const result = await appointmentService.createAppointment(appointmentData);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+/**
+ * Get server-calculated checkout quote
+ */
+exports.getQuote = asyncHandler(async (req, res) => {
+  const result = await appointmentService.getBookingQuote(req.body);
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -17,7 +28,10 @@ exports.create = asyncHandler(async (req, res) => {
  * Update appointment status
  */
 exports.updateStatus = asyncHandler(async (req, res) => {
-  const result = await appointmentService.updateAppointmentStatus(req.params.id, req.body);
+  const result = await appointmentService.updateAppointmentStatus(req.params.id, req.body, {
+    userId: req.userId,
+    role: req.userRole,
+  });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -46,7 +60,10 @@ exports.list = asyncHandler(async (req, res) => {
  * Get appointment by ID
  */
 exports.getById = asyncHandler(async (req, res) => {
-  const result = await appointmentService.getAppointment(req.params.id);
+  const result = await appointmentService.getAppointment(req.params.id, {
+    userId: req.userId,
+    role: req.userRole,
+  });
   res.json({ success: true, message: 'OK', data: result });
 });
 

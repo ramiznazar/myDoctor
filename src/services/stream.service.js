@@ -2,27 +2,22 @@
 const { StreamChat } = require('stream-chat');
 const config = require('../config/env');
 
-// Validate Stream credentials
+// Video calls are optional infrastructure.  Do not make the whole API fail to
+// boot when a local/development environment has not configured Stream; the
+// video endpoint will return a clear error only when somebody starts a call.
+let streamClient = null;
 if (!config.STREAM_API_KEY || !config.STREAM_API_SECRET) {
-  console.error('❌ Stream API credentials are missing!');
-  console.error('Please set STREAM_API_KEY and STREAM_API_SECRET in your .env file');
-  throw new Error('Stream API credentials are not configured');
-}
-
-console.log('✅ Stream API Key:', config.STREAM_API_KEY ? `${config.STREAM_API_KEY.substring(0, 4)}...` : 'MISSING');
-console.log('✅ Stream API Secret:', config.STREAM_API_SECRET ? 'SET' : 'MISSING');
-
-// Initialize Stream Chat client for token generation
-let streamClient;
-try {
-  streamClient = StreamChat.getInstance(
-    config.STREAM_API_KEY,
-    config.STREAM_API_SECRET
-  );
-  console.log('✅ Stream client initialized successfully');
-} catch (error) {
-  console.error('❌ Failed to initialize Stream client:', error);
-  throw error;
+  console.warn('⚠️ Stream API credentials are missing; video calls are unavailable until configured.');
+} else {
+  try {
+    streamClient = StreamChat.getInstance(
+      config.STREAM_API_KEY,
+      config.STREAM_API_SECRET
+    );
+    console.log('✅ Stream client initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize Stream client:', error);
+  }
 }
 
 /**
@@ -32,19 +27,23 @@ try {
  * @returns {string} User token
  */
 const generateUserToken = (userId, userName) => {
+  if (!streamClient) {
+    const error = new Error('Video calling is not configured. Please contact support.');
+    error.statusCode = 503;
+    throw error;
+  }
+
   try {
-    console.log(`🔑 Generating Stream token for user: ${userId} (${userName || 'N/A'})`);
-    
-    // StreamChat.createToken generates proper tokens for Stream Video
     const token = streamClient.createToken(userId);
-    
-    console.log('✅ Stream token generated successfully');
     return token;
   } catch (error) {
-    console.error('❌ Error generating Stream token:', error);
     throw new Error(`Failed to generate Stream token: ${error.message}`);
   }
 };
+
+/** Public key is safe for the browser and required by the Stream SDK. */
+const getPublicApiKey = () => config.STREAM_API_KEY || null;
+const isConfigured = () => Boolean(streamClient && config.STREAM_API_KEY);
 
 /**
  * Create a Stream call
@@ -86,8 +85,10 @@ const endCall = async (callId) => {
 
 module.exports = {
   generateUserToken,
+  getPublicApiKey,
   createCall,
   getCall,
   endCall,
+  isConfigured,
 };
 

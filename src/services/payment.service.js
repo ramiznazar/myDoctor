@@ -8,33 +8,72 @@ const balanceService = require('./balance.service');
 
 /**
  * Process appointment payment
+ * The amount is always derived from the appointment record, never from the
+ * client. This prevents a patient from paying an arbitrary value at checkout.
  * @param {string} userId - User ID (patient)
  * @param {string} appointmentId - Appointment ID
- * @param {number} amount - Payment amount
+ * @param {number} ignoredAmount - Legacy client value; intentionally unused
  * @param {string} paymentMethod - Payment method
  * @returns {Promise<Object>} Transaction
  */
-const processAppointmentPayment = async (userId, appointmentId, amount, paymentMethod = 'DUMMY') => {
+const processAppointmentPayment = async (userId, appointmentId, ignoredAmount, paymentMethod = 'DUMMY') => {
   const appointment = await Appointment.findById(appointmentId);
-  
+
   if (!appointment) {
     throw new Error('Appointment not found');
   }
 
-  // Create transaction
+  if (String(appointment.patientId) !== String(userId)) {
+    const error = new Error('You can only pay for your own appointment');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (appointment.paymentStatus === 'PAID') {
+    throw new Error('Appointment is already paid');
+  }
+
+  if (['CANCELLED', 'REJECTED', 'REFUNDED'].includes(appointment.status)) {
+    throw new Error(`Cannot pay for an appointment with status: ${appointment.status}`);
+  }
+
+  let amountToPay = Number(appointment.totalAmount);
+  const hasStoredPrice = Number.isFinite(amountToPay) && amountToPay >= 0 &&
+    (appointment.consultationFee !== null && appointment.consultationFee !== undefined ||
+      (Array.isArray(appointment.selectedServices) && appointment.selectedServices.length > 0));
+
+  if (!hasStoredPrice) {
+    // Compatibility with appointments created before checkout stored a quote.
+    const User = require('../models/user.model');
+    const doctor = await User.findById(appointment.doctorId).populate('doctorProfile');
+    const profile = doctor?.doctorProfile;
+    const configuredFee = appointment.bookingType === 'ONLINE'
+      ? profile?.consultationFees?.online
+      : profile?.consultationFees?.clinic;
+    const parsedFee = Number(configuredFee);
+    amountToPay = Number.isFinite(parsedFee) && parsedFee >= 0 ? parsedFee : 0;
+  }
+
+  amountToPay = Math.round((amountToPay + Number.EPSILON) * 100) / 100;
+  const currency = appointment.currency || 'EUR';
+
   const transaction = await Transaction.create({
     userId,
-    amount,
-    currency: 'EUR',
+    amount: amountToPay,
+    currency,
     relatedAppointmentId: appointmentId,
     status: 'SUCCESS',
     provider: paymentMethod,
-    providerReference: `APT-${Date.now()}`
+    providerReference: `APT-${Date.now()}`,
   });
 
-  // Update appointment payment status
   appointment.paymentStatus = 'PAID';
   appointment.paymentMethod = paymentMethod;
+  appointment.totalAmount = amountToPay;
+  appointment.currency = currency;
+  if (appointment.status === 'PENDING_PAYMENT') {
+    appointment.status = 'PENDING';
+  }
   await appointment.save();
 
   return transaction;

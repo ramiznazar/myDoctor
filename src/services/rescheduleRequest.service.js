@@ -298,6 +298,9 @@ const approveRescheduleRequest = async (requestId, doctorId, approvalData) => {
   
   // Update original appointment
   originalAppointment.status = 'RESCHEDULED';
+  // The newly created pending-payment appointment now owns the replacement
+  // slot. Release the original appointment's scheduling lock immediately.
+  originalAppointment.activeSlotKey = undefined;
   originalAppointment.rescheduleRequestId = request._id;
   await originalAppointment.save();
   

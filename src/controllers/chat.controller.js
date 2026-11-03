@@ -9,6 +9,17 @@ exports.sendMessage = asyncHandler(async (req, res) => {
     ...req.body,
     senderId: req.userId
   };
+
+  // Never trust participant IDs supplied by the browser. Bind them to the
+  // authenticated user's role so one user cannot post as another.
+  if (req.userRole === 'PATIENT') {
+    messageData.patientId = req.userId;
+  } else if (req.userRole === 'DOCTOR') {
+    messageData.doctorId = req.userId;
+  } else if (req.userRole === 'ADMIN') {
+    messageData.adminId = req.userId;
+  }
+
   const result = await chatService.sendMessage(messageData);
   res.json({ success: true, message: 'OK', data: result });
 });
@@ -17,7 +28,7 @@ exports.sendMessage = asyncHandler(async (req, res) => {
  * Get messages for conversation
  */
 exports.getMessages = asyncHandler(async (req, res) => {
-  const result = await chatService.getMessages(req.params.conversationId, req.query);
+  const result = await chatService.getMessages(req.params.conversationId, req.userId, req.query);
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -28,14 +39,23 @@ exports.getMessages = asyncHandler(async (req, res) => {
  */
 exports.getOrCreateConversation = asyncHandler(async (req, res) => {
   const { doctorId, patientId, appointmentId } = req.body;
-  // Fetch adminId from token if user is ADMIN
   const adminId = req.userRole === 'ADMIN' ? req.userId : req.body.adminId;
-  const result = await chatService.getOrCreateConversation(doctorId, patientId, adminId, appointmentId);
+  const actorId = req.userId;
+  const resolvedPatientId = req.userRole === 'PATIENT' ? req.userId : patientId;
+  const resolvedDoctorId = req.userRole === 'DOCTOR' ? req.userId : doctorId;
+
+  const result = await chatService.getOrCreateConversation(
+    resolvedDoctorId,
+    resolvedPatientId,
+    adminId,
+    appointmentId,
+    actorId
+  );
   res.json({ success: true, message: 'OK', data: result });
 });
 
 /**
- * Get conversations for current user (admin or doctor)
+ * Get conversations for current user (admin, doctor or patient)
  */
 exports.getConversations = asyncHandler(async (req, res) => {
   const result = await chatService.getConversations(req.userId, req.userRole, req.query);
@@ -58,3 +78,10 @@ exports.getUnreadCount = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'OK', data: { unreadCount: result } });
 });
 
+/**
+ * Mark a doctor-patient conversation as completed (doctor only)
+ */
+exports.markConversationComplete = asyncHandler(async (req, res) => {
+  const result = await chatService.markConversationComplete(req.params.conversationId, req.userId);
+  res.json({ success: true, message: 'Conversation marked as completed', data: result });
+});
