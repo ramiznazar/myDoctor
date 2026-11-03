@@ -114,6 +114,17 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // These timestamps are deliberately kept on the order rather than inferred
+  // from the browser.  They allow each side of an order to see a reliable
+  // "new update" indicator in its own dashboard.
+  ownerReadAt: {
+    type: Date,
+    default: null
+  },
+  patientReadAt: {
+    type: Date,
+    default: null
+  },
   deliveredAt: {
     type: Date,
     default: null
@@ -161,6 +172,8 @@ orderSchema.pre('save', async function(next) {
 // Index for faster queries
 orderSchema.index({ patientId: 1, createdAt: -1 });
 orderSchema.index({ ownerId: 1, createdAt: -1 });
+orderSchema.index({ ownerId: 1, ownerReadAt: 1 });
+orderSchema.index({ patientId: 1, patientReadAt: 1 });
 orderSchema.index({ pharmacyId: 1, createdAt: -1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ orderNumber: 1 });

@@ -58,6 +58,14 @@ exports.getPharmacyOrders = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Count order changes not yet viewed by the current patient or pharmacy.
+ */
+exports.getUnreadCount = asyncHandler(async (req, res) => {
+  const unreadCount = await orderService.getUnreadCount(req.userId, req.userRole);
+  res.json({ success: true, message: 'OK', data: { unreadCount } });
+});
+
+/**
  * Get all orders (admin only)
  */
 exports.getAllOrders = asyncHandler(async (req, res) => {

@@ -14,12 +14,23 @@ const getId = (value) => (value?._id || value)?.toString?.() || String(value || 
 const relationshipKeyFor = (doctorId, patientId) =>
   `DOCTOR_PATIENT:${getId(doctorId)}:${getId(patientId)}`;
 
+const includeAppointment = (conversation, appointmentId) => {
+  if (!conversation || !appointmentId) return;
+  const appointmentIds = Array.isArray(conversation.appointmentIds) ? conversation.appointmentIds : [];
+  if (!appointmentIds.some((id) => sameId(id, appointmentId))) {
+    conversation.appointmentIds = [...appointmentIds, appointmentId];
+  }
+};
+
 const isDuplicateKeyError = (error, field) => error?.code === 11000 && Boolean(error?.keyPattern?.[field]);
 
 const ensureRelationshipKey = async (conversation, doctorId, patientId) => {
   if (!conversation) return null;
   const relationshipKey = relationshipKeyFor(doctorId, patientId);
-  if (conversation.relationshipKey === relationshipKey) return conversation;
+  if (conversation.relationshipKey === relationshipKey) {
+    if (conversation.isModified()) await conversation.save();
+    return conversation;
+  }
 
   conversation.relationshipKey = relationshipKey;
   try {
@@ -111,6 +122,8 @@ const consolidateDoctorPatientConversations = async (doctorId, patientId, prefer
     conversations[0];
 
   const duplicateConversations = conversations.filter((conversation) => !sameId(conversation._id, canonicalConversation._id));
+  includeAppointment(canonicalConversation, canonicalConversation.appointmentId);
+  if (preferredAppointmentId) includeAppointment(canonicalConversation, preferredAppointmentId);
   if (duplicateConversations.length === 0) {
     return ensureRelationshipKey(canonicalConversation, doctorId, patientId);
   }
@@ -122,6 +135,10 @@ const consolidateDoctorPatientConversations = async (doctorId, patientId, prefer
   }, canonicalConversation);
 
   const duplicateIds = duplicateConversations.map((conversation) => conversation._id);
+  duplicateConversations.forEach((conversation) => {
+    includeAppointment(canonicalConversation, conversation.appointmentId);
+    (conversation.appointmentIds || []).forEach((appointmentId) => includeAppointment(canonicalConversation, appointmentId));
+  });
   await ChatMessage.updateMany(
     { conversationId: { $in: duplicateIds } },
     { $set: { conversationId: canonicalConversation._id } }
@@ -135,8 +152,9 @@ const consolidateDoctorPatientConversations = async (doctorId, patientId, prefer
       (!canonicalConversation.lastMessageAt || new Date(newestConversation.lastMessageAt) > new Date(canonicalConversation.lastMessageAt))) {
     canonicalConversation.lastMessageAt = newestConversation.lastMessageAt;
     canonicalConversation.lastMessage = newestConversation.lastMessage;
-    await canonicalConversation.save();
   }
+
+  await canonicalConversation.save();
 
   return ensureRelationshipKey(canonicalConversation, doctorId, patientId);
 };
@@ -524,6 +542,7 @@ const getOrCreateConversation = async (doctorId, patientId, adminId, appointment
         doctorId,
         patientId,
         appointmentId: appointment._id,
+        appointmentIds: [appointment._id],
         conversationType: 'DOCTOR_PATIENT',
         relationshipKey: relationshipKeyFor(doctorId, patientId),
         lastMessageAt: new Date()
@@ -541,12 +560,14 @@ const getOrCreateConversation = async (doctorId, patientId, adminId, appointment
     await conversation.populate('appointmentId', 'appointmentDate appointmentTime status');
   } else if (isNewAppointmentForConversation) {
     conversation.appointmentId = appointment._id;
+    includeAppointment(conversation, appointment._id);
     conversation.lastMessageAt = new Date();
     await conversation.save();
     await conversation.populate('doctorId', 'fullName email phone profileImage');
     await conversation.populate('patientId', 'fullName email phone profileImage');
     await conversation.populate('appointmentId', 'appointmentDate appointmentTime status');
   } else {
+    includeAppointment(conversation, appointment._id);
     await conversation.populate('doctorId', 'fullName email phone profileImage');
     await conversation.populate('patientId', 'fullName email phone profileImage');
     await conversation.populate('appointmentId', 'appointmentDate appointmentTime status');

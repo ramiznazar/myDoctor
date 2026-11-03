@@ -21,6 +21,13 @@ const conversationSchema = new mongoose.Schema({
     ref: "Appointment",
     default: null // Optional: required only for doctor-patient conversations
   },
+  // A relationship has one chat but may span several appointments.  Keep all
+  // links for audit/history while `appointmentId` remains the latest one for
+  // existing clients.
+  appointmentIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Appointment"
+  }],
   conversationType: {
     type: String,
     enum: ["DOCTOR_PATIENT", "ADMIN_DOCTOR"],

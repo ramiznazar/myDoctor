@@ -3,6 +3,16 @@ const Product = require('../models/product.model');
 const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
+const notificationService = require('./notification.service');
+
+const notify = async (userId, title, body, data) => {
+  try {
+    await notificationService.createNotification({ userId, title, body, type: 'PAYMENT', data });
+  } catch (error) {
+    // A notification failure must never roll back a legitimate order update.
+    console.error('Unable to create order notification:', error.message);
+  }
+};
 
 /**
  * Create order from cart items
@@ -98,10 +108,19 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
       shippingAddress: shippingAddress || {},
       paymentMethod: null,
       status: 'PENDING',
-      paymentStatus: 'PENDING'
+      paymentStatus: 'PENDING',
+      ownerReadAt: null,
+      // The patient created this order, so it is already viewed on their side.
+      patientReadAt: new Date()
     });
 
     createdOrders.push(order);
+    await notify(
+      pharmacyData.ownerId,
+      'New order received',
+      `A new order (${order.orderNumber}) needs your shipping quote.`,
+      { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'ORDER_CREATED' }
+    );
   }
 
   return createdOrders.length === 1 ? createdOrders[0] : { orders: createdOrders };
@@ -135,6 +154,13 @@ const getOrderById = async (orderId, userId, userRole) => {
     throw new Error('Unauthorized: You can only view orders for your pharmacy');
   }
 
+  if (userRole === 'PATIENT' && !order.patientReadAt) {
+    await Order.updateOne({ _id: order._id }, { $set: { patientReadAt: new Date() } });
+  }
+  if ((userRole === 'PHARMACY' || userRole === 'PARAPHARMACY') && !order.ownerReadAt) {
+    await Order.updateOne({ _id: order._id }, { $set: { ownerReadAt: new Date() } });
+  }
+
   return order;
 };
 
@@ -163,6 +189,16 @@ const getPatientOrders = async (patientId, options = {}) => {
       .limit(limit),
     Order.countDocuments(query)
   ]);
+
+  // Loading the order list is an explicit acknowledgement of any order
+  // updates for this patient.  The count endpoint intentionally does not do
+  // this, so rendering a sidebar never clears the indicator.
+  if (orders.length) {
+    await Order.updateMany(
+      { _id: { $in: orders.map((order) => order._id) }, patientReadAt: null },
+      { $set: { patientReadAt: new Date() } }
+    );
+  }
 
   return {
     orders,
@@ -216,6 +252,13 @@ const getPharmacyOrders = async (ownerId, options = {}) => {
       .limit(limit),
     Order.countDocuments(query)
   ]);
+
+  if (orders.length) {
+    await Order.updateMany(
+      { _id: { $in: orders.map((order) => order._id) }, ownerReadAt: null },
+      { $set: { ownerReadAt: new Date() } }
+    );
+  }
 
   // Debug logging
   if (process.env.NODE_ENV === 'development') {
@@ -316,6 +359,8 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
   }
 
   order.status = status.toUpperCase();
+  order.patientReadAt = null;
+  order.ownerReadAt = new Date();
 
   // Set deliveredAt when status is DELIVERED
   if (status.toUpperCase() === 'DELIVERED') {
@@ -323,6 +368,12 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
   }
 
   await order.save();
+  await notify(
+    order.patientId,
+    'Order status updated',
+    `Your order ${order.orderNumber} is now ${order.status.toLowerCase()}.`,
+    { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'STATUS_UPDATED' }
+  );
 
   return order;
 };
@@ -369,8 +420,16 @@ const updateShippingFee = async (orderId, shippingFee, userId, userRole) => {
   order.total = finalTotal;
   order.shippingUpdatedAt = new Date();
   order.requiresPaymentUpdate = false; // Patient needs to pay the updated amount
+  order.patientReadAt = null;
+  order.ownerReadAt = new Date();
 
   await order.save();
+  await notify(
+    order.patientId,
+    'Shipping fee updated',
+    `The shipping fee for order ${order.orderNumber} is ready for payment.`,
+    { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'SHIPPING_UPDATED' }
+  );
 
   return order;
 };
@@ -438,6 +497,8 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
   order.status = 'CONFIRMED';
   order.paymentMethod = 'STRIPE';
   order.transactionId = transaction._id;
+  order.ownerReadAt = null;
+  order.patientReadAt = new Date();
   await order.save();
 
   // Reduce product stock
@@ -469,6 +530,13 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
     // Log error but don't fail the payment - balance can be credited later
   }
 
+  await notify(
+    order.ownerId._id || order.ownerId,
+    'Order paid',
+    `Order ${order.orderNumber} has been paid and is ready to process.`,
+    { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'ORDER_PAID' }
+  );
+
   return order;
 };
 
@@ -492,8 +560,12 @@ const cancelOrder = async (orderId, userId, userRole) => {
     throw new Error('Unauthorized: You can only cancel your own orders');
   }
 
-  if (userRole === 'DOCTOR' && order.ownerId.toString() !== userId.toString()) {
+  if ((userRole === 'PHARMACY' || userRole === 'PARAPHARMACY') && order.ownerId.toString() !== userId.toString()) {
     throw new Error('Unauthorized: You can only cancel orders for your pharmacy');
+  }
+
+  if (!['PATIENT', 'PHARMACY', 'PARAPHARMACY', 'ADMIN'].includes(userRole)) {
+    throw new Error('Unauthorized: Only the patient, pharmacy owner or an administrator can cancel an order');
   }
 
   // Can only cancel if order is PENDING or CONFIRMED
@@ -518,7 +590,17 @@ const cancelOrder = async (orderId, userId, userRole) => {
   }
 
   order.status = 'CANCELLED';
+  const cancelledByPatient = userRole === 'PATIENT';
+  order.patientReadAt = cancelledByPatient ? new Date() : null;
+  order.ownerReadAt = cancelledByPatient ? null : new Date();
   await order.save();
+
+  await notify(
+    cancelledByPatient ? order.ownerId : order.patientId,
+    'Order cancelled',
+    `Order ${order.orderNumber} has been cancelled.`,
+    { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'ORDER_CANCELLED' }
+  );
 
   return order;
 };
@@ -549,6 +631,20 @@ const linkTransactionToOrder = async (orderId, transactionId) => {
   return order;
 };
 
+/**
+ * Return a role-scoped unread order count.  It is separate from notifications
+ * because a count must remain correct even if a delivery notification fails.
+ */
+const getUnreadCount = async (userId, userRole) => {
+  if (userRole === 'PATIENT') {
+    return Order.countDocuments({ patientId: userId, patientReadAt: null });
+  }
+  if (userRole === 'PHARMACY' || userRole === 'PARAPHARMACY') {
+    return Order.countDocuments({ ownerId: userId, ownerReadAt: null });
+  }
+  return 0;
+};
+
 module.exports = {
   createOrder,
   getOrderById,
@@ -559,6 +655,7 @@ module.exports = {
   updateShippingFee,
   cancelOrder,
   linkTransactionToOrder,
-  payForOrder
+  payForOrder,
+  getUnreadCount
 };
 

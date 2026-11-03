@@ -45,6 +45,17 @@ router.get(
 );
 
 /**
+ * @route   GET /api/orders/unread-count
+ * @desc    Count order changes that have not been viewed by the current user
+ * @access  Private (Patient, Pharmacy)
+ */
+router.get(
+  '/unread-count',
+  authGuard(['PATIENT', 'PHARMACY', 'PARAPHARMACY']),
+  asyncHandler(orderController.getUnreadCount)
+);
+
+/**
  * @route   GET /api/orders/:id
  * @desc    Get order by ID
  * @access  Private (Patient, Pharmacy, Admin)

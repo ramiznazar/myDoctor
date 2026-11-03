@@ -20,6 +20,8 @@ const SubscriptionPlan = require('../src/models/subscriptionPlan.model');
 const WeeklySchedule = require('../src/models/weeklySchedule.model');
 const Appointment = require('../src/models/appointment.model');
 const Conversation = require('../src/models/conversation.model');
+const Pharmacy = require('../src/models/pharmacy.model');
+const Product = require('../src/models/product.model');
 
 const dayName = (date) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getUTCDay()];
 const calendarDate = (date) => date.toISOString().slice(0, 10);
@@ -82,6 +84,20 @@ const seed = async () => {
     password: 'not-used-by-this-test',
     status: 'APPROVED',
   });
+  const pharmacy = await User.create({
+    role: 'PHARMACY',
+    fullName: 'Workflow Pharmacy',
+    email: 'workflow-pharmacy@example.test',
+    password: 'not-used-by-this-test',
+    status: 'APPROVED',
+  });
+  const parapharmacy = await User.create({
+    role: 'PARAPHARMACY',
+    fullName: 'Workflow Parapharmacy',
+    email: 'workflow-parapharmacy@example.test',
+    password: 'not-used-by-this-test',
+    status: 'APPROVED',
+  });
   const profile = await DoctorProfile.create({
     userId: doctor._id,
     title: 'Dr',
@@ -93,10 +109,25 @@ const seed = async () => {
   doctor.doctorProfile = profile._id;
   await doctor.save();
 
+  const parapharmacyProfile = await Pharmacy.create({
+    ownerId: parapharmacy._id,
+    kind: 'PARAPHARMACY',
+    name: 'Workflow Para Store',
+  });
+  const product = await Product.create({
+    sellerId: parapharmacy._id,
+    sellerType: 'PARAPHARMACY',
+    name: 'Workflow Health Product',
+    price: 12,
+    images: ['/uploads/products/workflow-product.jpg'],
+    stock: 10,
+    category: 'Health',
+  });
+
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     .map((dayOfWeek) => ({ dayOfWeek, timeSlots: [{ startTime: '00:00', endTime: '23:59', isAvailable: true }] }));
   await WeeklySchedule.create({ doctorId: doctor._id, appointmentDuration: 60, days });
-  return { doctor, patient };
+  return { doctor, patient, pharmacy, parapharmacy, parapharmacyProfile, product };
 };
 
 const main = async () => {
@@ -110,9 +141,11 @@ const main = async () => {
     await mongoose.connection.dropDatabase();
     await Promise.all([Appointment.syncIndexes(), Conversation.syncIndexes()]);
 
-    const { doctor, patient } = await seed();
+    const { doctor, patient, pharmacy, parapharmacy, product } = await seed();
     const doctorToken = tokenFor(doctor);
     const patientToken = tokenFor(patient);
+    const pharmacyToken = tokenFor(pharmacy);
+    const parapharmacyToken = tokenFor(parapharmacy);
 
     server = await listen();
     const address = server.address();
@@ -223,7 +256,63 @@ const main = async () => {
     const historyConversation = history.conversations.find((conversation) => conversation._id === firstConversation._id);
     assert.equal(historyConversation?.status, 'COMPLETED', 'completed conversation remains visible in history');
 
-    console.log('PASS: complete booking, checkout, scheduling, video ringing, and chat workflow');
+    // A later appointment with the same doctor must continue the relationship
+    // history rather than create a second chat row.  This direct fixture is
+    // intentionally in the past so chat availability is valid in every run.
+    const priorDay = new Date(now);
+    priorDay.setUTCDate(priorDay.getUTCDate() - 1);
+    const followUpAppointment = await Appointment.create({
+      doctorId: doctor._id,
+      patientId: patient._id,
+      appointmentDate: new Date(Date.UTC(priorDay.getUTCFullYear(), priorDay.getUTCMonth(), priorDay.getUTCDate())),
+      appointmentTime: '12:00',
+      appointmentEndTime: '13:00',
+      appointmentDuration: 60,
+      bookingType: 'ONLINE',
+      status: 'CONFIRMED',
+      paymentStatus: 'PAID',
+      selectedServices: [{ name: 'Consultation', price: 20 }],
+      totalAmount: 70,
+    });
+    const resumedConversation = expectOk(await api('/chat/conversation', {
+      method: 'POST', token: patientToken,
+      body: { doctorId: doctor._id.toString(), patientId: patient._id.toString(), appointmentId: followUpAppointment._id.toString() },
+    }), 'follow-up appointment reuses relationship chat');
+    assert.equal(resumedConversation._id, firstConversation._id, 'two appointments with the same doctor share one conversation');
+    assert.equal(resumedConversation.status, 'ACTIVE', 'a later confirmed appointment reopens the completed relationship chat');
+    assert.equal(
+      (resumedConversation.appointmentIds || []).map(String).includes(followUpAppointment._id.toString()),
+      true,
+      'the canonical conversation retains its follow-up appointment link'
+    );
+
+    const order = expectOk(await api('/orders', {
+      method: 'POST', token: patientToken,
+      body: {
+        items: [{ productId: product._id.toString(), quantity: 1 }],
+        shippingAddress: { line1: '1 Test Street', city: 'Berlin', state: 'Berlin', country: 'DE', zip: '10115' },
+      },
+    }), 'patient creates product order');
+    const newOrderCount = expectOk(await api('/orders/unread-count', { token: parapharmacyToken }), 'parapharmacy unread order count');
+    assert.equal(newOrderCount.unreadCount, 1, 'the parapharmacy sidebar receives one new order indicator');
+    const parapharmacyOrders = expectOk(await api('/orders?limit=10', { token: parapharmacyToken }), 'parapharmacy views order list');
+    const listedProduct = parapharmacyOrders.orders?.find((entry) => entry._id === order._id)?.items?.[0]?.productId;
+    assert.equal(listedProduct?.name, 'Workflow Health Product', 'order lists include the product name');
+    assert.equal(listedProduct?.images?.[0], '/uploads/products/workflow-product.jpg', 'order lists include the product image');
+    const viewedOrderCount = expectOk(await api('/orders/unread-count', { token: parapharmacyToken }), 'parapharmacy count after viewing orders');
+    assert.equal(viewedOrderCount.unreadCount, 0, 'viewing the order list clears only the relevant seller count');
+    expectOk(await api(`/orders/${order._id}/shipping`, {
+      method: 'PUT', token: parapharmacyToken, body: { shippingFee: 6 },
+    }), 'parapharmacy updates shipping');
+    const patientOrderUpdateCount = expectOk(await api('/orders/unread-count', { token: patientToken }), 'patient unread order update count');
+    assert.equal(patientOrderUpdateCount.unreadCount, 1, 'the patient receives the shipping-update indicator');
+    expectOk(await api('/orders?limit=10', { token: patientToken }), 'patient views order history');
+    const patientViewedOrderCount = expectOk(await api('/orders/unread-count', { token: patientToken }), 'patient count after viewing orders');
+    assert.equal(patientViewedOrderCount.unreadCount, 0, 'viewing order history clears the patient order indicator');
+    const pharmacyOrderCount = expectOk(await api('/orders/unread-count', { token: pharmacyToken }), 'pharmacy unread order count');
+    assert.equal(pharmacyOrderCount.unreadCount, 0, 'a separate pharmacy sees no unrelated order indicator');
+
+    console.log('PASS: booking, checkout, scheduling, video ringing, canonical chat, and role-scoped order updates');
   } finally {
     if (server) await close(server);
     if (mongoose.connection.readyState) {
