@@ -38,11 +38,11 @@ const appointmentSchema = new mongoose.Schema({
   },
   timezone: {
     type: String,
-    default: null // User's timezone (e.g., "Asia/Karachi", "UTC+5", "America/New_York")
+    default: null // Device-configured IANA timezone (for example, "America/New_York" or "UTC")
   },
   timezoneOffset: {
     type: Number,
-    default: null // Timezone offset in minutes (e.g., 300 for UTC+5)
+    default: null // Minutes east of UTC; retained as a legacy fallback
   },
   bookingType: {
     type: String,

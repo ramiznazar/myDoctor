@@ -1,261 +1,133 @@
 const Appointment = require('../models/appointment.model');
+const Notification = require('../models/notification.model');
 const notificationService = require('./notification.service');
-const User = require('../models/user.model');
-const { parseAppointmentDate } = require('../middleware/appointmentAccess');
+const { computeAppointmentWindow } = require('../utils/appointmentTime');
+
+const userName = (user, fallback) => user?.fullName || user?.name || user?.email || fallback;
 
 /**
- * Send notifications when appointment time arrives
- * This should be called by a scheduled job/cron that runs every minute
- * CRITICAL: Uses timezone-aware comparison to send notifications at the correct user local time
+ * Notifications are idempotent per participant and action. The worker runs
+ * every minute, so checking the persisted action avoids duplicate reminders
+ * when a process restarts or runs slightly early/late.
  */
-const sendAppointmentTimeNotifications = async () => {
-  const nowUTC = new Date(); // Current time in UTC
-  
-  // Find appointments that:
-  // 1. Are CONFIRMED
-  // 2. Are ONLINE type
-  // 3. Appointment date is today (we'll check this with timezone awareness)
-  // 4. Appointment time matches current time (within 1 minute window) - timezone aware
-  // 5. Haven't sent notification yet
-  
-  const appointments = await Appointment.find({
-    status: 'CONFIRMED',
-    bookingType: 'ONLINE'
-  })
-    .populate('doctorId', 'fullName email')
-    .populate('patientId', 'fullName email');
+const sendOnce = async ({ userId, appointmentId, action, title, body, data = {} }) => {
+  if (!userId) return false;
 
-  const notificationsToSend = [];
+  const exists = await Notification.exists({
+    userId,
+    type: 'APPOINTMENT',
+    'data.action': action,
+    'data.appointmentId': String(appointmentId),
+  });
+  if (exists) return false;
 
-  for (const appointment of appointments) {
-    try {
-      const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
-      
-      // Get timezone offset (same logic as video call validation)
-      let tzOffsetMinutes;
-      if (appointment.timezoneOffset !== null && appointment.timezoneOffset !== undefined) {
-        tzOffsetMinutes = appointment.timezoneOffset;
-        
-        // CRITICAL FIX: Detect and correct wrong timezone offsets (same as video call)
-        if (startHours >= 12 && startHours <= 23 && tzOffsetMinutes === 60) {
-          console.log('⚠️ [Notification] Correcting wrong timezone offset from UTC+1 to UTC+5 for appointment:', appointment._id);
-          tzOffsetMinutes = 300; // Override with correct UTC+5 offset
-        }
-      } else {
-        // Default to UTC+5 (Pakistan) for appointments without timezone
-        tzOffsetMinutes = 300;
-      }
-
-      // Derive appointment calendar date in its timezone to avoid previous-day shifts.
-      const appointmentDateUTC = appointment.appointmentDate instanceof Date
-        ? appointment.appointmentDate
-        : new Date(appointment.appointmentDate);
-      const appointmentDateInTz = new Date(appointmentDateUTC.getTime() + tzOffsetMinutes * 60 * 1000);
-      const year = appointmentDateInTz.getUTCFullYear();
-      const month = appointmentDateInTz.getUTCMonth();
-      const day = appointmentDateInTz.getUTCDate();
-      
-      // Convert appointment time to UTC (same logic as video call validation)
-      const appointmentStartDateTimeUTC = new Date(Date.UTC(year, month, day, startHours, startMinutes, 0, 0));
-      const appointmentStartDateTime = new Date(appointmentStartDateTimeUTC.getTime() - (tzOffsetMinutes * 60 * 1000));
-      
-      // Check if current UTC time is within 1 minute of appointment UTC time
-      const timeDifference = Math.abs(nowUTC.getTime() - appointmentStartDateTime.getTime());
-      const timeDifferenceMinutes = timeDifference / (60 * 1000);
-      
-      if (timeDifferenceMinutes <= 1) { // Within 1 minute
-        // Check if we already sent notification (by checking for existing notification)
-        const existingNotification = await require('../models/notification.model').findOne({
-          userId: { $in: [appointment.doctorId._id, appointment.patientId._id] },
-          type: 'APPOINTMENT',
-          'data.appointmentId': appointment._id,
-          title: { $regex: /appointment.*time|video.*call.*time/i },
-          createdAt: {
-            $gte: new Date(nowUTC.getTime() - 5 * 60 * 1000) // Within last 5 minutes
-          }
-        });
-
-        if (!existingNotification) {
-        // Send notifications to both doctor and patient
-        notificationsToSend.push(
-          notificationService.createNotification({
-            userId: appointment.doctorId._id,
-            title: 'Video Call Appointment Time',
-            body: `Your video call appointment with ${appointment.patientId.fullName} is starting now. Click to join the call.`,
-            i18n: {
-              title: { it: 'È ora della videochiamata' },
-              body: { it: `La tua videochiamata con ${appointment.patientId.fullName} sta iniziando ora. Clicca per partecipare.` },
-            },
-            type: 'APPOINTMENT',
-            data: { 
-              appointmentId: appointment._id,
-              action: 'VIDEO_CALL_START',
-              appointmentTime: appointment.appointmentTime
-            }
-          }),
-          notificationService.createNotification({
-            userId: appointment.patientId._id,
-            title: 'Video Call Appointment Time',
-            body: `Your video call appointment with Dr. ${appointment.doctorId.fullName} is starting now. Click to join the call.`,
-            i18n: {
-              title: { it: 'È ora della videochiamata' },
-              body: { it: `La tua videochiamata con il Dott. ${appointment.doctorId.fullName} sta iniziando ora. Clicca per partecipare.` },
-            },
-            type: 'APPOINTMENT',
-            data: { 
-              appointmentId: appointment._id,
-              action: 'VIDEO_CALL_START',
-              appointmentTime: appointment.appointmentTime
-            }
-          })
-        );
-        }
-      }
-    } catch (error) {
-      console.error('❌ [Notification] Error processing appointment for time notification:', appointment._id, error);
-    }
-  }
-
-  if (notificationsToSend.length > 0) {
-    await Promise.all(notificationsToSend);
-    console.log(`✅ Sent ${notificationsToSend.length} appointment time notifications`);
-  }
-
-  return { sent: notificationsToSend.length };
+  await notificationService.createNotification({
+    userId,
+    title,
+    body,
+    type: 'APPOINTMENT',
+    data: { appointmentId: String(appointmentId), action, ...data },
+  });
+  return true;
 };
 
+const confirmedAppointments = (onlineOnly = false) => Appointment.find({
+  status: 'CONFIRMED',
+  ...(onlineOnly ? { bookingType: 'ONLINE' } : {}),
+})
+  .populate('doctorId', 'fullName name email')
+  .populate('patientId', 'fullName name email');
+
 /**
- * Check and send notifications for upcoming appointments (5 minutes before)
- * CRITICAL: Uses timezone-aware comparison to send reminders at the correct user local time
+ * All appointment clocks are converted through the shared appointment-time
+ * utility. It honours the IANA timezone captured from the device and the
+ * correct offset for the appointment date, including daylight saving time.
  */
 const sendUpcomingAppointmentNotifications = async () => {
-  const nowUTC = new Date(); // Current time in UTC
-  const fiveMinutesLaterUTC = new Date(nowUTC.getTime() + 5 * 60 * 1000);
-
-  const appointments = await Appointment.find({
-    status: 'CONFIRMED',
-    bookingType: 'ONLINE'
-  })
-    .populate('doctorId', 'fullName email')
-    .populate('patientId', 'fullName email');
-
-  const notificationsToSend = [];
+  const now = new Date();
+  const appointments = await confirmedAppointments();
+  let sent = 0;
 
   for (const appointment of appointments) {
     try {
-      // Parse appointment date using the same helper as video call validation
-      const dateComponents = parseAppointmentDate(appointment.appointmentDate);
-      if (!dateComponents) {
-        console.log('⚠️ [Notification] Could not parse appointment date for appointment:', appointment._id);
-        continue;
-      }
-      const [startHours, startMinutes] = appointment.appointmentTime.split(':').map(Number);
-      
-      // Get timezone offset (same logic as video call validation)
-      let tzOffsetMinutes;
-      if (appointment.timezoneOffset !== null && appointment.timezoneOffset !== undefined) {
-        tzOffsetMinutes = appointment.timezoneOffset;
-        
-        // CRITICAL FIX: Detect and correct wrong timezone offsets (same as video call)
-        if (startHours >= 12 && startHours <= 23 && tzOffsetMinutes === 60) {
-          console.log('⚠️ [Notification] Correcting wrong timezone offset from UTC+1 to UTC+5 for appointment:', appointment._id);
-          tzOffsetMinutes = 300; // Override with correct UTC+5 offset
-        }
-      } else {
-        // Default to UTC+5 (Pakistan) for appointments without timezone
-        tzOffsetMinutes = 300;
-      }
+      const { start } = computeAppointmentWindow(appointment);
+      const minutesUntilStart = (start.getTime() - now.getTime()) / 60000;
+      // The worker runs every minute. A narrow two-minute window makes the
+      // ten-minute reminder reliable without sending it more than once.
+      if (minutesUntilStart < 8.5 || minutesUntilStart > 10.5) continue;
 
-      // Derive appointment calendar date in its timezone to avoid previous-day shifts.
-      const appointmentDateUTC = appointment.appointmentDate instanceof Date
-        ? appointment.appointmentDate
-        : new Date(appointment.appointmentDate);
-      const appointmentDateInTz = new Date(appointmentDateUTC.getTime() + tzOffsetMinutes * 60 * 1000);
-      const year = appointmentDateInTz.getUTCFullYear();
-      const month = appointmentDateInTz.getUTCMonth();
-      const day = appointmentDateInTz.getUTCDate();
-      
-      // Convert appointment time to UTC (same logic as video call validation)
-      const appointmentStartDateTimeUTC = new Date(Date.UTC(year, month, day, startHours, startMinutes, 0, 0));
-      const appointmentStartDateTime = new Date(appointmentStartDateTimeUTC.getTime() - (tzOffsetMinutes * 60 * 1000));
-      
-      // Check if appointment is 5 minutes from now (within 1 minute window)
-      const timeDifference = Math.abs(fiveMinutesLaterUTC.getTime() - appointmentStartDateTime.getTime());
-      const timeDifferenceMinutes = timeDifference / (60 * 1000);
-      
-      if (timeDifferenceMinutes <= 1) { // Appointment is 5 minutes away (within 1 minute window)
-        // Check if we already sent reminder notification
-        const Notification = require('../models/notification.model');
-        const existingNotification = await Notification.findOne({
-          userId: { $in: [appointment.doctorId._id, appointment.patientId._id] },
-          type: 'APPOINTMENT',
-          'data.appointmentId': appointment._id,
-          title: { $regex: /appointment.*reminder|upcoming.*appointment/i },
-          createdAt: {
-            $gte: new Date(nowUTC.getTime() - 10 * 60 * 1000) // Within last 10 minutes
-          }
-        });
-
-        if (!existingNotification) {
-          // Format appointment time for display (in user's local timezone)
-          const appointmentDateTime = new Date(appointmentStartDateTime);
-          const localTimeString = appointmentDateTime.toLocaleString('en-US', {
-            year: 'numeric',
-            month: 'numeric',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-          });
-
-          notificationsToSend.push(
-            notificationService.createNotification({
-              userId: appointment.doctorId._id,
-              title: 'Upcoming Video Call Appointment',
-              body: `You have a video call appointment with ${appointment.patientId.fullName} in 5 minutes at ${localTimeString}.`,
-              i18n: {
-                title: { it: 'Videochiamata in arrivo' },
-                body: { it: `Hai una videochiamata con ${appointment.patientId.fullName} tra 5 minuti alle ${localTimeString}.` },
-              },
-              type: 'APPOINTMENT',
-              data: { 
-                appointmentId: appointment._id,
-                action: 'VIDEO_CALL_REMINDER',
-                appointmentTime: appointment.appointmentTime
-              }
-            }),
-            notificationService.createNotification({
-              userId: appointment.patientId._id,
-              title: 'Upcoming Video Call Appointment',
-              body: `You have a video call appointment with Dr. ${appointment.doctorId.fullName} in 5 minutes at ${localTimeString}.`,
-              i18n: {
-                title: { it: 'Videochiamata in arrivo' },
-                body: { it: `Hai una videochiamata con il Dott. ${appointment.doctorId.fullName} tra 5 minuti alle ${localTimeString}.` },
-              },
-              type: 'APPOINTMENT',
-              data: { 
-                appointmentId: appointment._id,
-                action: 'VIDEO_CALL_REMINDER',
-                appointmentTime: appointment.appointmentTime
-              }
-            })
-          );
-        }
-      }
+      const doctorName = userName(appointment.doctorId, 'your doctor');
+      const patientName = userName(appointment.patientId, 'your patient');
+      const data = { appointmentTime: appointment.appointmentTime, minutesBefore: 10 };
+      const created = await Promise.all([
+        sendOnce({
+          userId: appointment.doctorId?._id,
+          appointmentId: appointment._id,
+          action: 'APPOINTMENT_REMINDER_10_MIN',
+          title: 'Appointment starts in 10 minutes',
+          body: `Your appointment with ${patientName} starts at ${appointment.appointmentTime}.`,
+          data,
+        }),
+        sendOnce({
+          userId: appointment.patientId?._id,
+          appointmentId: appointment._id,
+          action: 'APPOINTMENT_REMINDER_10_MIN',
+          title: 'Appointment starts in 10 minutes',
+          body: `Your appointment with Dr. ${doctorName} starts at ${appointment.appointmentTime}.`,
+          data,
+        }),
+      ]);
+      sent += created.filter(Boolean).length;
     } catch (error) {
-      console.error('❌ [Notification] Error processing appointment for reminder:', appointment._id, error);
+      console.error('Appointment reminder failed:', appointment?._id, error);
     }
   }
 
-  if (notificationsToSend.length > 0) {
-    await Promise.all(notificationsToSend);
-    console.log(`✅ Sent ${notificationsToSend.length} upcoming appointment notifications`);
+  return { sent };
+};
+
+const sendAppointmentTimeNotifications = async () => {
+  const now = new Date();
+  const appointments = await confirmedAppointments(true);
+  let sent = 0;
+
+  for (const appointment of appointments) {
+    try {
+      const { start, end } = computeAppointmentWindow(appointment);
+      const minutesFromStart = (now.getTime() - start.getTime()) / 60000;
+      if (minutesFromStart < -0.25 || minutesFromStart > 1 || now > end) continue;
+
+      const doctorName = userName(appointment.doctorId, 'your doctor');
+      const patientName = userName(appointment.patientId, 'your patient');
+      const data = { appointmentTime: appointment.appointmentTime };
+      const created = await Promise.all([
+        sendOnce({
+          userId: appointment.doctorId?._id,
+          appointmentId: appointment._id,
+          action: 'VIDEO_CALL_START',
+          title: 'Video call appointment time',
+          body: `Your video appointment with ${patientName} is ready to join.`,
+          data,
+        }),
+        sendOnce({
+          userId: appointment.patientId?._id,
+          appointmentId: appointment._id,
+          action: 'VIDEO_CALL_START',
+          title: 'Video call appointment time',
+          body: `Your video appointment with Dr. ${doctorName} is ready to join.`,
+          data,
+        }),
+      ]);
+      sent += created.filter(Boolean).length;
+    } catch (error) {
+      console.error('Appointment start notification failed:', appointment?._id, error);
+    }
   }
 
-  return { sent: notificationsToSend.length };
+  return { sent };
 };
 
 module.exports = {
   sendAppointmentTimeNotifications,
-  sendUpcomingAppointmentNotifications
+  sendUpcomingAppointmentNotifications,
 };

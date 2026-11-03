@@ -39,10 +39,11 @@ const normalizeTimezone = (timezone, timezoneOffset, dateParts) => {
   const parsedOffset = parseUtcOffsetTimezone(timezone);
 
   if (isIanaTimeZone(timezone)) {
+    const normalizedTimeZone = String(timezone).trim();
     const noon = new Date(Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, 12, 0, 0, 0));
-    const fallbackOffset = getTimeZoneOffsetMinutes(noon, timezone);
+    const fallbackOffset = getTimeZoneOffsetMinutes(noon, normalizedTimeZone);
     return {
-      timezone,
+      timezone: normalizedTimeZone,
       timezoneOffset: Number.isFinite(requestedOffset)
         ? requestedOffset
         : Number.isFinite(fallbackOffset)
@@ -318,7 +319,12 @@ const createAppointment = async (data) => {
   // successfully stored appointment or payment.
   try {
     const notificationService = require('./notification.service');
-    const dateLabel = new Date(appointmentDateUtc).toLocaleDateString();
+    const dateLabel = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    }).format(appointmentDateUtc);
     await Promise.all([
       notificationService.createNotification({
         userId: doctorId,
@@ -326,7 +332,7 @@ const createAppointment = async (data) => {
         body: `${patient.fullName} has requested an appointment on ${dateLabel} at ${appointmentTime}`,
         i18n: {
           title: { it: 'Nuova richiesta di appuntamento' },
-          body: { it: `${patient.fullName} ha richiesto un appuntamento il ${new Date(appointmentDateUtc).toLocaleDateString('it-IT')} alle ${appointmentTime}` },
+          body: { it: `${patient.fullName} ha richiesto un appuntamento il ${new Intl.DateTimeFormat('it-IT', { timeZone: 'UTC' }).format(appointmentDateUtc)} alle ${appointmentTime}` },
         },
         type: 'APPOINTMENT',
         data: { appointmentId: appointment._id },

@@ -11,9 +11,9 @@
  */
 
 const isIanaTimeZone = (timeZone) => {
-  if (typeof timeZone !== 'string' || !timeZone.includes('/')) return false;
+  if (typeof timeZone !== 'string' || !timeZone.trim()) return false;
   try {
-    Intl.DateTimeFormat('en-US', { timeZone }).format();
+    Intl.DateTimeFormat('en-US', { timeZone: timeZone.trim() }).format();
     return true;
   } catch {
     return false;

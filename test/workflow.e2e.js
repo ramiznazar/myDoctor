@@ -20,8 +20,10 @@ const SubscriptionPlan = require('../src/models/subscriptionPlan.model');
 const WeeklySchedule = require('../src/models/weeklySchedule.model');
 const Appointment = require('../src/models/appointment.model');
 const Conversation = require('../src/models/conversation.model');
+const Notification = require('../src/models/notification.model');
 const Pharmacy = require('../src/models/pharmacy.model');
 const Product = require('../src/models/product.model');
+const { sendUpcomingAppointmentNotifications } = require('../src/services/appointmentNotification.service');
 
 const dayName = (date) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getUTCDay()];
 const calendarDate = (date) => date.toISOString().slice(0, 10);
@@ -159,6 +161,35 @@ const main = async () => {
     const appointmentTime = clockHour(now);
     assert.equal(dayName(now).length > 0, true);
 
+    // Exercise the real doctor schedule API and database persistence with
+    // multiple independent ranges. Pick a different weekday so this focused
+    // availability check cannot alter the current-hour booking below.
+    const availabilityProbe = new Date(now);
+    availabilityProbe.setUTCDate(availabilityProbe.getUTCDate() + 2);
+    const availabilityDay = dayName(availabilityProbe);
+    const availabilityDate = calendarDate(availabilityProbe);
+    expectOk(await api('/weekly-schedule', {
+      method: 'POST', token: doctorToken,
+      body: {
+        dayOfWeek: availabilityDay,
+        timeSlots: [
+          { startTime: '09:45', endTime: '10:45', isAvailable: true },
+          { startTime: '17:00', endTime: '18:00', isAvailable: true },
+        ],
+      },
+    }), 'doctor saves separate availability ranges');
+    const exactSlots = expectOk(await api(`/weekly-schedule/slots?doctorId=${doctor._id}&date=${availabilityDate}`), 'exact availability endpoint');
+    assert.deepEqual(
+      exactSlots.map((slot) => slot.startTime),
+      ['09:45', '17:00'],
+      'availability preserves non-aligned range starts and never mixes daily ranges'
+    );
+    const overlappingRange = await api(`/weekly-schedule/day/${availabilityDay}/slot`, {
+      method: 'POST', token: doctorToken,
+      body: { startTime: '10:15', endTime: '11:15', isAvailable: true },
+    });
+    assert.equal(overlappingRange.status, 400, 'overlapping availability ranges are rejected at the API boundary');
+
     const slots = expectOk(await api(`/weekly-schedule/slots?doctorId=${doctor._id}&date=${appointmentDate}`), 'availability endpoint');
     assert.equal(slots.some((slot) => slot.startTime === appointmentTime && slot.endTime), true, 'current appointment slot is offered');
 
@@ -285,6 +316,38 @@ const main = async () => {
       true,
       'the canonical conversation retains its follow-up appointment link'
     );
+
+    // A UTC device zone is intentionally different from the server's local
+    // zone. The worker must calculate the reminder from the stored zone and
+    // send it once to each participant.
+    const reminderStart = new Date(Date.now() + 10 * 60 * 1000);
+    const reminderAppointment = await Appointment.create({
+      doctorId: doctor._id,
+      patientId: patient._id,
+      appointmentDate: new Date(Date.UTC(
+        reminderStart.getUTCFullYear(),
+        reminderStart.getUTCMonth(),
+        reminderStart.getUTCDate()
+      )),
+      appointmentTime: `${String(reminderStart.getUTCHours()).padStart(2, '0')}:${String(reminderStart.getUTCMinutes()).padStart(2, '0')}`,
+      appointmentDuration: 30,
+      bookingType: 'ONLINE',
+      timezone: 'UTC',
+      timezoneOffset: 0,
+      status: 'CONFIRMED',
+      paymentStatus: 'PAID',
+    });
+    const reminderResult = await sendUpcomingAppointmentNotifications();
+    assert.equal(reminderResult.sent, 2, 'the device-zone appointment sends one reminder to doctor and patient');
+    assert.equal(
+      await Notification.countDocuments({
+        'data.appointmentId': String(reminderAppointment._id),
+        'data.action': 'APPOINTMENT_REMINDER_10_MIN',
+      }),
+      2,
+      'the reminder is persisted once per participant'
+    );
+    assert.equal((await sendUpcomingAppointmentNotifications()).sent, 0, 'the reminder worker does not create duplicate notifications');
 
     const order = expectOk(await api('/orders', {
       method: 'POST', token: patientToken,

@@ -5,12 +5,14 @@ const Appointment = require('../src/models/appointment.model');
 const Conversation = require('../src/models/conversation.model');
 const {
   buildBookableSlots,
+  normalizeTimeSlots,
   parseCalendarDate,
 } = require('../src/services/weeklySchedule.service');
 const {
   calculateEndClock,
   computeAppointmentWindow,
   getAppointmentDateParts,
+  isIanaTimeZone,
 } = require('../src/utils/appointmentTime');
 
 const mondaySchedule = {
@@ -37,6 +39,47 @@ test('weekly availability expands a range into appointment-length slots', () => 
   ]);
 });
 
+test('separate daily ranges preserve their exact configured start times', () => {
+  const slots = buildBookableSlots({
+    appointmentDuration: 30,
+    days: [{
+      dayOfWeek: 'Monday',
+      timeSlots: [
+        { startTime: '09:45', endTime: '10:45', isAvailable: true },
+        { startTime: '17:00', endTime: '18:00', isAvailable: true },
+      ],
+    }],
+  }, parseCalendarDate('2026-11-02'));
+
+  assert.deepEqual(slots, [
+    { startTime: '09:45', endTime: '10:15', duration: 30 },
+    { startTime: '10:15', endTime: '10:45', duration: 30 },
+    { startTime: '17:00', endTime: '17:30', duration: 30 },
+    { startTime: '17:30', endTime: '18:00', duration: 30 },
+  ]);
+});
+
+test('daily availability ranges are sorted and may not overlap', () => {
+  assert.deepEqual(
+    normalizeTimeSlots([
+      { startTime: '17:00', endTime: '21:00', isAvailable: true },
+      { startTime: '09:00', endTime: '14:00', isAvailable: true },
+    ]).map(({ startTime, endTime, isAvailable }) => ({ startTime, endTime, isAvailable })),
+    [
+      { startTime: '09:00', endTime: '14:00', isAvailable: true },
+      { startTime: '17:00', endTime: '21:00', isAvailable: true },
+    ]
+  );
+
+  assert.throws(
+    () => normalizeTimeSlots([
+      { startTime: '09:00', endTime: '12:00', isAvailable: true },
+      { startTime: '11:30', endTime: '13:00', isAvailable: true },
+    ]),
+    /overlaps/
+  );
+});
+
 test('weekly availability returns no slots for an unavailable weekday', () => {
   assert.deepEqual(
     buildBookableSlots(mondaySchedule, parseCalendarDate('2026-11-03')),
@@ -61,6 +104,23 @@ test('an overnight appointment window finishes on the following calendar day', (
 
   assert.equal(start.toISOString(), '2026-11-02T23:45:00.000Z');
   assert.equal(end.toISOString(), '2026-11-03T00:15:00.000Z');
+});
+
+test('appointment windows use the stored device timezone instead of a server or country default', () => {
+  assert.equal(isIanaTimeZone('Europe/Rome'), true);
+  assert.equal(isIanaTimeZone('UTC'), true);
+
+  const { start } = computeAppointmentWindow({
+    appointmentDate: '2026-11-02',
+    appointmentTime: '09:45',
+    appointmentEndTime: '10:15',
+    timezone: 'Europe/Rome',
+    // Deliberately supply a conflicting legacy offset. The IANA zone must be
+    // authoritative, including its daylight-saving rules.
+    timezoneOffset: 300,
+  });
+
+  assert.equal(start.toISOString(), '2026-11-02T08:45:00.000Z');
 });
 
 test('active slot and canonical relationship indexes ignore released/history records', () => {

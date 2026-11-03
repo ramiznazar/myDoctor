@@ -43,6 +43,56 @@ const dayScheduleFor = (schedule, dateParts) => {
 const effectiveDuration = (schedule) => Number(schedule?.appointmentDuration) || 30;
 
 /**
+ * Keep every daily availability range independently meaningful.  Slot
+ * generation is deliberately anchored to each range's own start time (rather
+ * than to midnight or the previous range), so a range beginning at 09:45 will
+ * always produce 09:45, 10:15, … for a 30 minute appointment duration.
+ *
+ * Ranges are sorted before persisting and may touch, but may not overlap. An
+ * overlap is ambiguous to patients and used to make it possible for the same
+ * clock time to be derived from more than one configured range.
+ */
+const normalizeTimeSlots = (timeSlots = []) => {
+  if (!Array.isArray(timeSlots)) {
+    const error = new Error('Time slots must be an array');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalized = timeSlots.map((slot, index) => {
+    const start = clockToMinutes(slot?.startTime);
+    const end = clockToMinutes(slot?.endTime);
+    if (start === null || end === null || end <= start) {
+      const error = new Error(`Time slot ${index + 1} must have a valid start time before its end time`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    return {
+      ...slot,
+      startTime: minutesToClock(start),
+      endTime: minutesToClock(end),
+      isAvailable: slot?.isAvailable !== false,
+    };
+  }).sort((left, right) => {
+    const startDifference = clockToMinutes(left.startTime) - clockToMinutes(right.startTime);
+    return startDifference || (clockToMinutes(left.endTime) - clockToMinutes(right.endTime));
+  });
+
+  for (let index = 1; index < normalized.length; index += 1) {
+    const previous = normalized[index - 1];
+    const current = normalized[index];
+    if (clockToMinutes(current.startTime) < clockToMinutes(previous.endTime)) {
+      const error = new Error(`Time slot ${index + 1} overlaps with another availability range`);
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  return normalized;
+};
+
+/**
  * Expand a doctor's availability ranges into real bookable appointments.
  * A range such as 09:00–12:00 with 30 minute consultations deliberately
  * returns 09:00, 09:30, 10:00, ... rather than treating the full range as one
@@ -112,6 +162,7 @@ const isSlotFree = (slot, appointments, dateParts) => {
  */
 const upsertSchedule = async (doctorId, data) => {
   const { dayOfWeek, timeSlots } = data;
+  const normalizedSlots = normalizeTimeSlots(timeSlots || []);
 
   let schedule = await WeeklySchedule.findOne({ doctorId });
 
@@ -127,12 +178,12 @@ const upsertSchedule = async (doctorId, data) => {
 
   if (dayIndex !== -1) {
     // Update existing day
-    schedule.days[dayIndex].timeSlots = timeSlots || [];
+    schedule.days[dayIndex].timeSlots = normalizedSlots;
   } else {
     // Add new day
     schedule.days.push({
       dayOfWeek,
-      timeSlots: timeSlots || []
+      timeSlots: normalizedSlots
     });
   }
 
@@ -205,12 +256,16 @@ const addTimeSlot = async (doctorId, dayOfWeek, timeSlot) => {
 
   if (dayIndex !== -1) {
     // Add slot to existing day
-    schedule.days[dayIndex].timeSlots.push(timeSlot);
+    const normalizedSlots = normalizeTimeSlots([
+      ...schedule.days[dayIndex].timeSlots.map((slot) => slot.toObject ? slot.toObject() : slot),
+      timeSlot,
+    ]);
+    schedule.days[dayIndex].timeSlots = normalizedSlots;
   } else {
     // Create new day with slot
     schedule.days.push({
       dayOfWeek,
-      timeSlots: [timeSlot]
+      timeSlots: normalizeTimeSlots([timeSlot])
     });
   }
 
@@ -247,7 +302,15 @@ const updateTimeSlot = async (doctorId, dayOfWeek, slotId, updates) => {
     throw new Error('Time slot not found');
   }
 
-  // Update slot fields
+  // Validate the complete candidate day. Validating only the changed fields
+  // can let an edit create an overlap with a neighbouring range.
+  const candidateSlots = schedule.days[dayIndex].timeSlots.map((slot, index) => ({
+    ...(slot.toObject ? slot.toObject() : slot),
+    ...(index === slotIndex ? updates : {}),
+  }));
+  normalizeTimeSlots(candidateSlots);
+
+  // Update only after the whole day has passed validation.
   Object.assign(schedule.days[dayIndex].timeSlots[slotIndex], updates);
 
   await schedule.save();
@@ -328,5 +391,6 @@ module.exports = {
   // exposes only getAvailableSlotsForDate.
   buildBookableSlots,
   parseCalendarDate,
+  normalizeTimeSlots,
 };
 
