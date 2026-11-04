@@ -38,6 +38,8 @@ router.use('/patient', require('./patient.routes'));
 router.use('/prescriptions', require('./prescription.routes'));
 router.use('/product-prescription-requests', require('./productPrescriptionRequest.routes'));
 router.use('/support-tickets', require('./supportTicket.routes'));
+router.use('/footer-options', require('./footerOption.routes'));
+router.use('/contact-queries', require('./contactQuery.routes'));
 router.use('/announcements', require('./announcement.routes'));
 router.use('/weekly-schedule', require('./weeklySchedule.routes'));
 router.use('/balance', require('./balance.routes'));

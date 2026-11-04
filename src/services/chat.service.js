@@ -64,6 +64,9 @@ const normalizeChatAttachments = (items) => (Array.isArray(items) ? items : [])
     return {
       type: rawType === 'image' ? 'image' : 'file',
       url,
+      name: String(attachment.name || attachment.originalName || '').trim().slice(0, 255) || null,
+      size: Number.isFinite(Number(attachment.size)) && Number(attachment.size) >= 0 ? Number(attachment.size) : null,
+      mimeType: String(attachment.mimeType || attachment.mimetype || '').trim().slice(0, 160) || null,
     };
   })
   .filter(Boolean);

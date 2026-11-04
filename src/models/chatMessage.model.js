@@ -44,7 +44,10 @@ const chatMessageSchema = new mongoose.Schema({
     type: [
       {
         type: { type: String, default: null },
-        url: { type: String, default: null }
+        url: { type: String, default: null },
+        name: { type: String, default: null },
+        size: { type: Number, default: null },
+        mimeType: { type: String, default: null }
       }
     ],
     default: null

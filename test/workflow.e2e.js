@@ -595,6 +595,13 @@ const main = async () => {
     expectOk(await api(`/chat/admin-support/conversations/${pharmacySupport._id}/messages`, {
       method: 'POST', token: pharmacyToken, body: { message: 'I need help with a product.' },
     }), 'pharmacy sends Admin support message');
+    const chatUploadForm = new FormData();
+    chatUploadForm.append('file', new Blob(['workflow admin support attachment'], { type: 'application/pdf' }), 'workflow-support.pdf');
+    const uploadedChatFile = expectOk(await multipartApi('/upload/chat', { token: pharmacyToken, formData: chatUploadForm }), 'pharmacy uploads Admin support attachment');
+    expectOk(await api(`/chat/admin-support/conversations/${pharmacySupport._id}/messages`, {
+      method: 'POST', token: pharmacyToken,
+      body: { attachments: [{ type: 'file', url: uploadedChatFile.url, name: 'workflow-support.pdf', size: 128, mimeType: 'application/pdf' }] },
+    }), 'pharmacy sends Admin support attachment');
     const parapharmacySupport = expectOk(await api('/chat/admin-support/conversation', { method: 'POST', token: parapharmacyToken }), 'parapharmacy opens Admin support chat');
     const doctorSupport = expectOk(await api('/chat/admin-support/conversation', { method: 'POST', token: doctorToken }), 'doctor opens Admin support chat');
     const adminInbox = expectOk(await api('/chat/conversations', { token: adminToken }), 'Admin lists all support conversations');
@@ -609,7 +616,14 @@ const main = async () => {
       method: 'POST', token: adminToken, body: { message: 'Your request is being reviewed.' },
     }), 'Admin replies to pharmacy support chat');
     const pharmacySupportHistory = expectOk(await api(`/chat/messages/${pharmacySupport._id}`, { token: pharmacyToken }), 'pharmacy reads Admin support history');
-    assert.equal(pharmacySupportHistory.messages.length, 2, 'both support messages remain accessible as history');
+    assert.equal(pharmacySupportHistory.messages.length, 3, 'both support messages and the attachment remain accessible as history');
+    const savedSupportAttachment = pharmacySupportHistory.messages.at(1).attachments?.[0];
+    assert.equal(savedSupportAttachment?.url, uploadedChatFile.url, 'Admin support attachment retains its uploaded URL');
+    assert.equal(savedSupportAttachment?.name, 'workflow-support.pdf', 'Admin support attachment retains its file name');
+    assert.equal(savedSupportAttachment?.mimeType, 'application/pdf', 'Admin support attachment retains its MIME type');
+    const storedChatFile = path.join(process.cwd(), uploadedChatFile.url.replace(/^\/uploads\//, 'uploads/'));
+    assert.equal(fs.existsSync(storedChatFile), true, 'chat attachment is stored by the backend');
+    fs.unlinkSync(storedChatFile);
     expectOk(await api(`/chat/conversations/${pharmacySupport._id}/read`, { method: 'PUT', token: pharmacyToken }), 'pharmacy marks Admin reply as read');
     assert.equal(parapharmacySupport.conversationType, 'ADMIN_PARAPHARMACY');
     assert.equal(doctorSupport.conversationType, 'ADMIN_DOCTOR');
@@ -656,7 +670,27 @@ const main = async () => {
     const blockedClosedReply = await api(`/support-tickets/${supportTicket._id}/messages`, { method: 'POST', token: patientToken, body: { body: 'This must be blocked after close.' } });
     assert.equal(blockedClosedReply.status, 400, 'closed ticket cannot receive additional messages');
 
-    console.log('PASS: appointment/video, canonical chat, onboarding, rich variants, prescription approval, checkout/shipping, Admin support, and patient support-ticket workflows');
+    // Contact Us is a public inquiry form, while the displayed contact details
+    // and internal inquiry workflow are persisted and owned by Admin.
+    const initialContactDetails = expectOk(await api('/footer-options'), 'public contact details load');
+    assert.equal(typeof initialContactDetails.address, 'string', 'public Contact Us page receives backend-managed fields');
+    const configuredContactDetails = expectOk(await api('/footer-options', {
+      method: 'PUT', token: adminToken,
+      body: { address: '20 Care Square, Berlin', phoneNumber: '+49 30 555 0199', supportEmail: 'support@workflow.example' },
+    }), 'Admin configures public contact details');
+    assert.equal(configuredContactDetails.supportEmail, 'support@workflow.example', 'Admin email is saved for the public page');
+    const publicContactDetails = expectOk(await api('/footer-options'), 'public contact details refresh');
+    assert.equal(publicContactDetails.phoneNumber, '+49 30 555 0199', 'public contact details reflect the Admin update');
+    const contactInquiry = expectOk(await api('/contact-queries', {
+      method: 'POST',
+      body: { name: 'Contact Visitor', email: 'visitor@workflow.example', phone: '+49 30 555 0102', services: 'Appointments', message: 'Please help me understand how an online appointment works.' },
+    }), 'visitor submits Contact Us inquiry');
+    const contactInquiries = expectOk(await api('/contact-queries?status=NEW', { token: adminToken }), 'Admin lists new contact inquiries');
+    assert.equal(contactInquiries.queries.some((item) => String(item._id) === String(contactInquiry._id)), true, 'Admin receives the public inquiry');
+    const resolvedInquiry = expectOk(await api(`/contact-queries/${contactInquiry._id}`, { method: 'PATCH', token: adminToken, body: { status: 'RESOLVED', adminNotes: 'Sent appointment guidance.' } }), 'Admin resolves contact inquiry');
+    assert.equal(resolvedInquiry.status, 'RESOLVED', 'contact inquiry retains its Admin status update');
+
+    console.log('PASS: appointment/video, canonical chat, onboarding, rich variants, prescription approval, checkout/shipping, Admin support attachments, contact inquiries, and patient support-ticket workflows');
   } finally {
     if (server) await close(server);
     if (mongoose.connection.readyState) {
