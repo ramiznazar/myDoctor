@@ -4,6 +4,14 @@ const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
 const notificationService = require('./notification.service');
+const {
+  DELIVERY_DAY_OPTIONS,
+  DELIVERY_STATUS,
+  DELIVERY_PERFORMANCE,
+  isValidDeliveryDays,
+  calculateExpectedDeliveryDate,
+  deriveDeliveryMonitoring,
+} = require('../utils/deliveryMonitoring');
 
 const notify = async (userId, title, body, data) => {
   try {
@@ -12,6 +20,41 @@ const notify = async (userId, title, body, data) => {
     // A notification failure must never roll back a legitimate order update.
     console.error('Unable to create order notification:', error.message);
   }
+};
+
+const toPlainOrder = (order) => (order?.toObject ? order.toObject() : order);
+
+// Keep delivery status accurate without a background job. This mirrors the
+// Veterinary order flow and persists a changed monitoring state for reports.
+const refreshDeliveryMonitoring = async (orders) => {
+  if (!Array.isArray(orders) || orders.length === 0) return orders || [];
+
+  const now = new Date();
+  const operations = [];
+  const monitored = orders.map((source) => {
+    const order = toPlainOrder(source);
+    const monitoring = deriveDeliveryMonitoring(order, now);
+    const changed = order.deliveryStatus !== monitoring.deliveryStatus
+      || order.deliveryPerformance !== monitoring.deliveryPerformance
+      || order.totalActualDeliveryDays !== monitoring.totalActualDeliveryDays;
+
+    if (changed && order?._id) {
+      operations.push({
+        updateOne: {
+          filter: { _id: order._id },
+          update: { $set: {
+            deliveryStatus: monitoring.deliveryStatus,
+            deliveryPerformance: monitoring.deliveryPerformance,
+            totalActualDeliveryDays: monitoring.totalActualDeliveryDays,
+          } },
+        },
+      });
+    }
+    return { ...order, ...monitoring };
+  });
+
+  if (operations.length) await Order.bulkWrite(operations, { ordered: false });
+  return monitored;
 };
 
 /**
@@ -27,24 +70,32 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     throw new Error('Order items are required');
   }
 
-  const normalizedAddress = {
-    line1: String(shippingAddress?.line1 || '').trim(),
-    line2: String(shippingAddress?.line2 || '').trim() || null,
-    city: String(shippingAddress?.city || '').trim(),
-    state: String(shippingAddress?.state || '').trim(),
-    country: String(shippingAddress?.country || '').trim(),
-    zip: String(shippingAddress?.zip || '').trim(),
-  };
-  if (![normalizedAddress.line1, normalizedAddress.city, normalizedAddress.state, normalizedAddress.country, normalizedAddress.zip].every(Boolean)) {
-    const error = new Error('A complete delivery address is required before checkout');
-    error.statusCode = 400;
-    throw error;
-  }
-
   // Verify patient exists
   const patient = await User.findById(patientId);
   if (!patient || patient.role !== 'PATIENT') {
     throw new Error('Patient not found');
+  }
+
+  // The delivery address is a snapshot for this order.  Patients can use a
+  // newly supplied address or the saved profile address, but an order is never
+  // created without a complete destination for the seller.
+  const normalizeShippingAddress = (address = {}) => ({
+    line1: String(address?.line1 || '').trim(),
+    line2: String(address?.line2 || '').trim() || null,
+    city: String(address?.city || '').trim(),
+    state: String(address?.state || '').trim(),
+    country: String(address?.country || '').trim(),
+    zip: String(address?.zip || '').trim(),
+  });
+  const hasRequestedAddress = ['line1', 'line2', 'city', 'state', 'country', 'zip']
+    .some((field) => Boolean(String(shippingAddress?.[field] || '').trim()));
+  const normalizedAddress = hasRequestedAddress
+    ? normalizeShippingAddress(shippingAddress)
+    : normalizeShippingAddress(patient.address);
+  if (![normalizedAddress.line1, normalizedAddress.city, normalizedAddress.state, normalizedAddress.country, normalizedAddress.zip].every(Boolean)) {
+    const error = new Error('A complete delivery address is required. Save an address in your profile or provide one for this order.');
+    error.statusCode = 400;
+    throw error;
   }
 
   // Get all products and calculate totals
@@ -96,8 +147,7 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
       pharmacyMap.set(pharmacyId, {
         pharmacyId: pharmacy._id,
         ownerId: pharmacy.ownerId,
-        items: [],
-        shippingSettings: pharmacy.shippingSettings || {}
+        items: []
       });
     }
 
@@ -127,14 +177,13 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
 
   const createdOrders = [];
   for (const pharmacyData of Array.from(pharmacyMap.values())) {
+    const requestedAt = new Date();
     const orderItems = pharmacyData.items;
     const orderSubtotal = orderItems.reduce((sum, i) => sum + (i.total || 0), 0);
     const tax = 0;
-    const initialShipping = Number(pharmacyData.shippingSettings?.fee || 0);
-    const promisedDeliveryDays = pharmacyData.shippingSettings?.deliveryDays ? Number(pharmacyData.shippingSettings.deliveryDays) : null;
-    const expectedDeliveryDate = promisedDeliveryDays
-      ? new Date(Date.now() + promisedDeliveryDays * 24 * 60 * 60 * 1000)
-      : null;
+    // Shipping belongs to a specific order: it is set by the owning seller
+    // after the order request, not inherited from a pharmacy profile.
+    const initialShipping = 0;
     const initialTotal = orderSubtotal + initialShipping;
 
     // Create order with PENDING status (no payment yet)
@@ -148,17 +197,14 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
       tax,
       shipping: initialShipping,
       initialShipping: initialShipping,
-      finalShipping: initialShipping,
-      shippingUpdatedAt: new Date(),
-      shippingFeeAddedAt: new Date(),
-      promisedDeliveryDays,
-      expectedDeliveryDate,
+      finalShipping: null,
       total: initialTotal,
       initialTotal: initialTotal,
       shippingAddress: normalizedAddress,
       paymentMethod: null,
       status: 'PENDING',
       paymentStatus: 'PENDING',
+      requestedAt,
       ownerReadAt: null,
       // The patient created this order, so it is already viewed on their side.
       patientReadAt: new Date()
@@ -168,7 +214,7 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     await notify(
       pharmacyData.ownerId,
       'New order received',
-      `A new order (${order.orderNumber}) was placed with your delivery commitment.`,
+      `A new order (${order.orderNumber}) is waiting for its shipping fee and delivery commitment.`,
       { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'ORDER_CREATED' }
     );
   }
@@ -211,7 +257,8 @@ const getOrderById = async (orderId, userId, userRole) => {
     await Order.updateOne({ _id: order._id }, { $set: { ownerReadAt: new Date() } });
   }
 
-  return order;
+  const [monitoredOrder] = await refreshDeliveryMonitoring([order]);
+  return monitoredOrder;
 };
 
 /**
@@ -250,8 +297,10 @@ const getPatientOrders = async (patientId, options = {}) => {
     );
   }
 
+  const monitoredOrders = await refreshDeliveryMonitoring(orders);
+
   return {
-    orders,
+    orders: monitoredOrders,
     pagination: {
       page,
       limit,
@@ -310,6 +359,8 @@ const getPharmacyOrders = async (ownerId, options = {}) => {
     );
   }
 
+  const monitoredOrders = await refreshDeliveryMonitoring(orders);
+
   // Debug logging
   if (process.env.NODE_ENV === 'development') {
     console.log('✅ getPharmacyOrders result:', {
@@ -320,7 +371,7 @@ const getPharmacyOrders = async (ownerId, options = {}) => {
   }
 
   return {
-    orders,
+    orders: monitoredOrders,
     pagination: {
       page,
       limit,
@@ -362,8 +413,10 @@ const getAllOrders = async (options = {}) => {
     Order.countDocuments(query)
   ]);
 
+  const monitoredOrders = await refreshDeliveryMonitoring(orders);
+
   return {
-    orders,
+    orders: monitoredOrders,
     pagination: {
       page,
       limit,
@@ -412,15 +465,15 @@ const updateOrderStatus = async (orderId, status, userId, userRole) => {
   order.patientReadAt = null;
   order.ownerReadAt = new Date();
 
-  // Set deliveredAt when status is DELIVERED
+  // Delivery performance is calculated from the seller's dated commitment.
   if (status.toUpperCase() === 'DELIVERED') {
     order.deliveredAt = new Date();
     order.actualDeliveredAt = order.deliveredAt;
-    order.totalActualDeliveryDays = Math.max(0, Math.ceil((order.actualDeliveredAt - (order.customerPaidAt || order.createdAt)) / (24 * 60 * 60 * 1000)));
-    const onTime = !order.expectedDeliveryDate || order.actualDeliveredAt <= order.expectedDeliveryDate;
-    order.deliveryStatus = onTime ? 'ON_TIME' : 'LATE';
-    order.deliveryPerformance = onTime ? 'ON_TIME' : 'LATE';
   }
+  const monitoring = deriveDeliveryMonitoring(order);
+  order.deliveryStatus = monitoring.deliveryStatus;
+  order.deliveryPerformance = monitoring.deliveryPerformance;
+  order.totalActualDeliveryDays = monitoring.totalActualDeliveryDays;
 
   await order.save();
   await notify(
@@ -464,25 +517,29 @@ const updateShippingFee = async (orderId, shippingFee, deliveryDays, userId, use
   if (typeof shippingFee !== 'number' || shippingFee < 0) {
     throw new Error('Shipping fee must be a non-negative number');
   }
-  if (deliveryDays !== undefined && deliveryDays !== null && (!Number.isInteger(deliveryDays) || deliveryDays < 1 || deliveryDays > 60)) {
-    throw new Error('Delivery commitment must be a whole number between 1 and 60 days');
+  if (!isValidDeliveryDays(deliveryDays)) {
+    throw new Error(`Expected delivery time is required and must be one of: ${DELIVERY_DAY_OPTIONS.join(', ')} days`);
   }
 
-  // Calculate new total
+  // Shipping is quoted for this specific order and unlocks the patient payment
+  // step only once the delivery commitment has been supplied too.
   const finalShipping = shippingFee;
-  const finalTotal = order.subtotal + finalShipping;
+  const finalTotal = (Number(order.subtotal) || 0) + finalShipping;
+  const shippingFeeAddedAt = new Date();
 
-  // Update order with final shipping fee
+  order.tax = 0;
   order.shipping = finalShipping;
   order.finalShipping = finalShipping;
   order.total = finalTotal;
-  order.shippingUpdatedAt = new Date();
-  order.shippingFeeAddedAt = new Date();
-  if (deliveryDays !== undefined && deliveryDays !== null) {
-    order.promisedDeliveryDays = deliveryDays;
-    order.expectedDeliveryDate = new Date(Date.now() + deliveryDays * 24 * 60 * 60 * 1000);
-  }
-  order.requiresPaymentUpdate = false; // Patient needs to pay the updated amount
+  order.shippingUpdatedAt = shippingFeeAddedAt;
+  order.pharmacyAcceptedAt = order.pharmacyAcceptedAt || shippingFeeAddedAt;
+  order.shippingFeeAddedAt = shippingFeeAddedAt;
+  order.promisedDeliveryDays = Number(deliveryDays);
+  order.expectedDeliveryDate = calculateExpectedDeliveryDate(shippingFeeAddedAt, deliveryDays);
+  order.deliveryStatus = DELIVERY_STATUS.ON_TIME;
+  order.deliveryPerformance = DELIVERY_PERFORMANCE.PENDING;
+  order.totalActualDeliveryDays = null;
+  order.requiresPaymentUpdate = false;
   order.patientReadAt = null;
   order.ownerReadAt = new Date();
 
@@ -517,8 +574,11 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
     throw new Error('Order not found');
   }
 
-  // Authorization check - only patient who owns the order can pay
-  if (userRole === 'PATIENT' && order.patientId.toString() !== userId.toString()) {
+  // Only the owning patient can pay for an order.
+  if (userRole !== 'PATIENT') {
+    throw new Error('Unauthorized: Only patients can pay for orders');
+  }
+  if (order.patientId.toString() !== userId.toString()) {
     throw new Error('Unauthorized: You can only pay for your own orders');
   }
 
@@ -527,8 +587,10 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
   }
 
   // Validate that shipping fee has been set by doctor
-  if (order.finalShipping === null || order.finalShipping === undefined) {
-    throw new Error('Shipping fee must be set by the pharmacy owner before payment');
+  if (order.finalShipping === null || order.finalShipping === undefined || !order.pharmacyAcceptedAt || !isValidDeliveryDays(order.promisedDeliveryDays)) {
+    const error = new Error('Shipping fee and delivery commitment must be set by the pharmacy owner before payment');
+    error.statusCode = 400;
+    throw error;
   }
 
   if (paymentMethod && String(paymentMethod).toUpperCase() !== 'STRIPE') {

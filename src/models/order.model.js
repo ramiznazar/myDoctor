@@ -93,7 +93,7 @@ const orderSchema = new mongoose.Schema({
   pharmacyAcceptedAt: { type: Date, default: null },
   shippingFeeAddedAt: { type: Date, default: null },
   customerPaidAt: { type: Date, default: null },
-  promisedDeliveryDays: { type: Number, default: null, min: 1, max: 60 },
+  promisedDeliveryDays: { type: Number, default: null, enum: [2, 3, 4, 5] },
   expectedDeliveryDate: { type: Date, default: null },
   actualDeliveredAt: { type: Date, default: null },
   totalActualDeliveryDays: { type: Number, default: null },

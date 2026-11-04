@@ -41,10 +41,6 @@ const createPharmacyValidator = z.object({
         z.number().optional()
       )
     }).optional(),
-    shippingSettings: z.object({
-      fee: z.coerce.number().nonnegative().optional(),
-      deliveryDays: z.coerce.number().int().min(1).max(60).optional().nullable()
-    }).optional(),
     isActive: z.boolean().optional()
   })
 });
@@ -83,10 +79,6 @@ const updatePharmacyValidator = z.object({
     location: z.object({
       lat: z.number().optional(),
       lng: z.number().optional()
-    }).optional(),
-    shippingSettings: z.object({
-      fee: z.coerce.number().nonnegative().optional(),
-      deliveryDays: z.coerce.number().int().min(1).max(60).optional().nullable()
     }).optional(),
     isActive: z.boolean().optional()
   }),

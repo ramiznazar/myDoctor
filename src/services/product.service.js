@@ -1,6 +1,5 @@
 const Product = require('../models/product.model');
 const User = require('../models/user.model');
-const Pharmacy = require('../models/pharmacy.model');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const subscriptionPolicy = require('./subscriptionPolicy.service');
 const { normalizeLang, localizeProduct } = require('../utils/localization');
@@ -184,14 +183,6 @@ const updateProduct = async (id, data, userId) => {
   return product;
 };
 
-const withSellerShipping = async (product) => {
-  const raw = product?.toObject ? product.toObject() : product;
-  if (!raw) return raw;
-  const sellerId = raw.sellerId?._id || raw.sellerId;
-  const pharmacy = sellerId ? await Pharmacy.findOne({ ownerId: sellerId }).select('shippingSettings').lean() : null;
-  return { ...raw, shippingSettings: pharmacy?.shippingSettings || { fee: 0, deliveryDays: null } };
-};
-
 const getProduct = async (id, options = {}) => {
   const product = await Product.findById(id).populate('sellerId', 'fullName email phone profileImage');
   if (!product) {
@@ -200,7 +191,7 @@ const getProduct = async (id, options = {}) => {
     throw error;
   }
   const lang = normalizeLang(options.lang);
-  return withSellerShipping(lang ? localizeProduct(product, lang) : product);
+  return lang ? localizeProduct(product, lang) : product;
 };
 
 const listProducts = async (filter = {}, options = {}) => {
@@ -227,7 +218,7 @@ const listProducts = async (filter = {}, options = {}) => {
   const lang = normalizeLang(options.lang);
   const localized = lang ? products.map((product) => localizeProduct(product, lang)) : products;
   return {
-    products: await Promise.all(localized.map(withSellerShipping)),
+    products: localized,
     pagination: { page: normalizedPage, limit: normalizedLimit, total, pages: Math.ceil(total / normalizedLimit) },
   };
 };

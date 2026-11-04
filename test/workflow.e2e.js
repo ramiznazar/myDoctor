@@ -141,7 +141,6 @@ const seed = async () => {
     name: 'Workflow Para Store',
     phone: '+49-30-555-0100',
     address: { line1: '12 Health Avenue', city: 'Berlin', state: 'Berlin', country: 'DE', zip: '10115' },
-    shippingSettings: { fee: 4.5, deliveryDays: 3 },
   });
   const pharmacyProfile = await Pharmacy.create({
     ownerId: pharmacy._id,
@@ -251,9 +250,8 @@ const main = async () => {
       body: {
         name: 'Workflow Pharmacy Store', phone: '+49-30-555-0101',
         address: { line1: '13 Health Avenue', city: 'Berlin', state: 'Berlin', country: 'DE', zip: '10116' },
-        shippingSettings: { fee: 5, deliveryDays: 2 },
       },
-    }), 'pharmacy completes business profile and delivery settings');
+    }), 'pharmacy completes its business profile');
     const profileOnlySetup = expectOk(await api('/pharmacy/setup-status', { token: pharmacyToken }), 'profile-complete pharmacy setup');
     assert.equal(profileOnlySetup.profileCompleted, true, 'profile completion persists');
     assert.equal(profileOnlySetup.isSetupComplete, false, 'subscription is still required for pharmacy');
@@ -278,7 +276,7 @@ const main = async () => {
     assert.equal(richProduct.variants.length, 2, 'both product variants are persisted');
     const richProductView = expectOk(await api(`/products/${richProduct._id}`), 'patient product detail receives all saved information');
     assert.equal(richProductView.variants[1].discountPrice, 15, 'variant sale price is returned to patient product pages');
-    assert.equal(richProductView.shippingSettings.deliveryDays, 2, 'seller delivery commitment is returned with product details');
+    assert.equal(richProductView.shippingSettings, undefined, 'product details do not expose fixed seller shipping settings');
 
     const now = new Date();
     const appointmentDate = calendarDate(now);
@@ -487,6 +485,12 @@ const main = async () => {
         shippingAddress: { line1: '1 Test Street', city: 'Berlin', state: 'Berlin', country: 'DE', zip: '10115' },
       },
     }), 'patient creates product order');
+    assert.equal(order.finalShipping, null, 'a new order has no seller shipping quote');
+    assert.equal(order.promisedDeliveryDays, null, 'a new order has no delivery commitment');
+    const blockedUnquotedPayment = await api(`/orders/${order._id}/pay`, {
+      method: 'POST', token: patientToken, body: { paymentMethod: 'STRIPE' },
+    });
+    assert.equal(blockedUnquotedPayment.status, 400, 'the patient cannot pay before the seller supplies an order-specific quote');
     const newOrderCount = expectOk(await api('/orders/unread-count', { token: parapharmacyToken }), 'parapharmacy unread order count');
     assert.equal(newOrderCount.unreadCount, 1, 'the parapharmacy sidebar receives one new order indicator');
     const parapharmacyOrders = expectOk(await api('/orders?limit=10', { token: parapharmacyToken }), 'parapharmacy views order list');
@@ -495,9 +499,16 @@ const main = async () => {
     assert.equal(listedProduct?.images?.[0], '/uploads/products/workflow-product.jpg', 'order lists include the product image');
     const viewedOrderCount = expectOk(await api('/orders/unread-count', { token: parapharmacyToken }), 'parapharmacy count after viewing orders');
     assert.equal(viewedOrderCount.unreadCount, 0, 'viewing the order list clears only the relevant seller count');
-    expectOk(await api(`/orders/${order._id}/shipping`, {
-      method: 'PUT', token: parapharmacyToken, body: { shippingFee: 6 },
-    }), 'parapharmacy updates shipping');
+    const invalidDeliveryCommitment = await api(`/orders/${order._id}/shipping`, {
+      method: 'PUT', token: parapharmacyToken, body: { shippingFee: 6, deliveryDays: 1 },
+    });
+    assert.equal(invalidDeliveryCommitment.status, 400, 'the seller must choose a 2–5 day delivery commitment');
+    const quotedOrder = expectOk(await api(`/orders/${order._id}/shipping`, {
+      method: 'PUT', token: parapharmacyToken, body: { shippingFee: 6, deliveryDays: 3 },
+    }), 'parapharmacy sets this order’s shipping and delivery commitment');
+    assert.equal(quotedOrder.finalShipping, 6, 'the order stores its own shipping fee');
+    assert.equal(quotedOrder.promisedDeliveryDays, 3, 'the order stores its own delivery commitment');
+    assert.ok(quotedOrder.expectedDeliveryDate, 'the order receives an expected delivery date');
     const patientOrderUpdateCount = expectOk(await api('/orders/unread-count', { token: patientToken }), 'patient unread order update count');
     assert.equal(patientOrderUpdateCount.unreadCount, 1, 'the patient receives the shipping-update indicator');
     expectOk(await api('/orders?limit=10', { token: patientToken }), 'patient views order history');
@@ -505,6 +516,10 @@ const main = async () => {
     assert.equal(patientViewedOrderCount.unreadCount, 0, 'viewing order history clears the patient order indicator');
     const pharmacyOrderCount = expectOk(await api('/orders/unread-count', { token: pharmacyToken }), 'pharmacy unread order count');
     assert.equal(pharmacyOrderCount.unreadCount, 0, 'a separate pharmacy sees no unrelated order indicator');
+    const paidOrder = expectOk(await api(`/orders/${order._id}/pay`, {
+      method: 'POST', token: patientToken, body: { paymentMethod: 'STRIPE' },
+    }), 'patient pays after the seller quote');
+    assert.equal(paidOrder.paymentStatus, 'PAID', 'the quoted order becomes paid');
 
     // Prescription-only products reject an order until the seller reviews the
     // exact selected option. Approval then unlocks only that patient/product
@@ -534,6 +549,11 @@ const main = async () => {
       method: 'PUT', token: parapharmacyToken, body: { status: 'APPROVED', reviewNotes: 'Verified by workflow test' },
     }), 'seller approves prescription');
     assert.equal(approvedPrescription.status, 'APPROVED');
+    assert.equal(await Notification.countDocuments({
+      userId: patient._id,
+      type: 'PRESCRIPTION_APPROVED',
+      'data.prescriptionRequestId': String(prescriptionRequest._id),
+    }), 1, 'approval creates one durable patient purchase-ready notification');
     const approvedEligibility = expectOk(await api(`/product-prescription-requests/product/${prescriptionProduct._id}/eligibility?variantId=${prescriptionVariant._id}`, { token: patientToken }), 'prescription eligibility after approval');
     assert.equal(approvedEligibility.canPurchase, true, 'approved prescription unlocks checkout');
     const prescriptionOrder = expectOk(await api('/orders', {
@@ -544,13 +564,18 @@ const main = async () => {
       },
     }), 'patient creates approved prescription order');
     assert.equal(prescriptionOrder.items[0].variantName, '20-tablet pack', 'order snapshots the chosen product variant');
-    assert.equal(prescriptionOrder.shipping, 4.5, 'configured shipping fee is attached at checkout');
-    assert.equal(prescriptionOrder.promisedDeliveryDays, 3, 'configured delivery commitment is attached at checkout');
+    assert.equal(prescriptionOrder.shipping, 0, 'the approved order begins without a fixed seller shipping fee');
+    assert.equal(prescriptionOrder.finalShipping, null, 'the approved order waits for an order-specific seller quote');
+    assert.equal(prescriptionOrder.promisedDeliveryDays, null, 'the approved order waits for a seller delivery commitment');
     assert.equal(prescriptionOrder.shippingAddress.line1, '5 Patient Street', 'patient delivery address is saved on order');
     const patientPrescriptionOrder = expectOk(await api(`/orders/${prescriptionOrder._id}`, { token: patientToken }), 'patient order details include delivery address');
     const sellerPrescriptionOrder = expectOk(await api(`/orders/${prescriptionOrder._id}`, { token: parapharmacyToken }), 'seller order details include delivery address');
     assert.equal(patientPrescriptionOrder.shippingAddress.zip, '10117', 'patient sees complete delivery address');
     assert.equal(sellerPrescriptionOrder.shippingAddress.line2, 'Apartment 4', 'seller sees complete delivery address');
+    const blockedPrescriptionPayment = await api(`/orders/${prescriptionOrder._id}/pay`, {
+      method: 'POST', token: patientToken, body: { paymentMethod: 'STRIPE' },
+    });
+    assert.equal(blockedPrescriptionPayment.status, 400, 'the approved prescription order cannot be paid before its seller quote');
     const revisedDelivery = expectOk(await api(`/orders/${prescriptionOrder._id}/shipping`, {
       method: 'PUT', token: parapharmacyToken, body: { shippingFee: 6.5, deliveryDays: 5 },
     }), 'seller revises shipping fee and delivery promise');
@@ -602,6 +627,8 @@ const main = async () => {
       },
     }), 'patient creates support ticket');
     assert.equal(supportTicket.messages.length, 1, 'ticket begins with the patient request in its history');
+    assert.equal(supportTicket.relatedRecord.type, 'APPOINTMENT', 'the selected related-record type is retained');
+    assert.equal(String(supportTicket.relatedRecord.recordId), String(appointment._id), 'the exact selected appointment is retained on the ticket');
     const supportUnread = expectOk(await api('/support-tickets/admin/unread-count', { token: adminToken }), 'Admin ticket unread count');
     assert.equal(supportUnread.unreadCount, 1, 'new ticket increments only the Admin ticket indicator');
     const adminTicket = expectOk(await api(`/support-tickets/admin/${supportTicket._id}`, { token: adminToken }), 'Admin opens patient support ticket');

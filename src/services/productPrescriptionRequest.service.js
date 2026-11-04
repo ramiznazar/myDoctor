@@ -2,6 +2,7 @@ const ProductPrescriptionRequest = require('../models/productPrescriptionRequest
 const Product = require('../models/product.model');
 const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
+const Notification = require('../models/notification.model');
 const notificationService = require('./notification.service');
 
 const httpError = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -29,12 +30,37 @@ const getSellerForProduct = async (product) => {
   return pharmacy;
 };
 
-const notify = async (userId, title, body, data) => {
+const notify = async (userId, title, body, type, data) => {
   try {
-    await notificationService.createNotification({ userId, title, body, type: 'PRESCRIPTION', data });
+    await notificationService.createNotification({ userId, title, body, type, data });
   } catch (error) {
     console.error('Unable to create product prescription notification:', error.message);
   }
+};
+
+// A persistent, deduplicated approval notification means a patient sees the
+// purchase-ready prompt once even if the review or notification request is
+// retried. It also backfills approvals created before the notifier was added.
+const ensureApprovalNotification = async (request, productName) => {
+  const prescriptionRequestId = String(request?._id || '');
+  if (!prescriptionRequestId) return;
+  const existing = await Notification.exists({
+    userId: request.patientId,
+    type: 'PRESCRIPTION_APPROVED',
+    'data.prescriptionRequestId': prescriptionRequestId,
+  });
+  if (existing) return;
+  await notificationService.createNotification({
+    userId: request.patientId,
+    title: 'Prescription approved',
+    body: `Your prescription for ${productName || 'this product'} has been approved. You can now purchase it.`,
+    type: 'PRESCRIPTION_APPROVED',
+    data: {
+      prescriptionRequestId,
+      productId: String(request.productId),
+      variantId: request.variantId ? String(request.variantId) : null,
+    },
+  });
 };
 
 const submitRequest = async (patientId, data) => {
@@ -53,17 +79,24 @@ const submitRequest = async (patientId, data) => {
     pharmacyOwnerId: pharmacy.ownerId, prescriptionUrl: String(prescriptionUrl).trim(),
     originalName: String(originalName || '').trim() || null, mimeType: String(mimeType || '').trim() || null,
   });
-  await notify(pharmacy.ownerId, 'New prescription request', `A patient submitted a prescription for ${product.name}.`, { action: 'PRODUCT_PRESCRIPTION_REQUEST', prescriptionRequestId: String(request._id), productId: String(product._id) });
+  await notify(
+    pharmacy.ownerId,
+    'New prescription request',
+    `A patient submitted a prescription for ${product.name}.`,
+    'PRESCRIPTION_REQUEST',
+    { action: 'PRODUCT_PRESCRIPTION_REQUEST', prescriptionRequestId: String(request._id), productId: String(product._id) }
+  );
   return request.toObject();
 };
 
 const getEligibility = async (patientId, productId, variantId) => {
-  const product = await Product.findById(productId).lean();
-  if (!product) throw httpError('Product not found', 404);
-  if (!product.requiresPrescription) return { requiresPrescription: false, canPurchase: true, status: 'NOT_REQUIRED', request: null };
+  const product = await getPrescriptionProduct(productId);
   const variant = resolveVariant(product, variantId);
   if (product.variants?.length && !variant) throw httpError('Selected product variant is no longer available');
   const request = await ProductPrescriptionRequest.findOne({ patientId, productId: product._id, variantId: variant?._id || null }).sort({ createdAt: -1 }).lean();
+  if (request?.status === 'APPROVED') {
+    try { await ensureApprovalNotification(request, product.name); } catch (error) { console.error('Unable to ensure prescription approval notification:', error.message); }
+  }
   return { requiresPrescription: true, canPurchase: request?.status === 'APPROVED', status: request?.status || 'NOT_SUBMITTED', request: request || null };
 };
 
@@ -125,10 +158,17 @@ const reviewRequest = async (ownerId, requestId, data) => {
   request.approvedAt = status === 'APPROVED' ? new Date() : null;
   await request.save();
   const product = await Product.findById(request.productId).select('name').lean();
-  await notify(request.patientId, status === 'APPROVED' ? 'Prescription approved' : 'Prescription needs attention', status === 'APPROVED'
-    ? `Your prescription for ${product?.name || 'this product'} has been approved. You can now purchase it.`
-    : `Your prescription for ${product?.name || 'this product'} was not approved. ${request.reviewNotes || 'Please submit a new prescription.'}`,
-  { action: status === 'APPROVED' ? 'PRODUCT_PRESCRIPTION_APPROVED' : 'PRODUCT_PRESCRIPTION_REJECTED', prescriptionRequestId: String(request._id), productId: String(request.productId), variantId: request.variantId ? String(request.variantId) : null });
+  if (status === 'APPROVED') {
+    try { await ensureApprovalNotification(request, product?.name); } catch (error) { console.error('Unable to create prescription approval notification:', error.message); }
+  } else {
+    await notify(
+      request.patientId,
+      'Prescription needs attention',
+      `Your prescription for ${product?.name || 'this product'} was not approved. ${request.reviewNotes || 'Please submit a new prescription.'}`,
+      'PRESCRIPTION_REJECTED',
+      { action: 'PRODUCT_PRESCRIPTION_REJECTED', prescriptionRequestId: String(request._id), productId: String(request.productId), variantId: request.variantId ? String(request.variantId) : null }
+    );
+  }
   return request.toObject();
 };
 

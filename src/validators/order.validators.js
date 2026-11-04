@@ -66,7 +66,10 @@ const getOrderByIdValidator = z.object({
 const updateShippingFeeValidator = z.object({
   body: z.object({
     shippingFee: z.coerce.number().nonnegative("Shipping fee must be non-negative"),
-    deliveryDays: z.coerce.number().int().min(1).max(60).optional().nullable()
+    deliveryDays: z.coerce.number().int().refine(
+      (value) => [2, 3, 4, 5].includes(value),
+      "Delivery commitment must be 2, 3, 4, or 5 days"
+    )
   }),
   params: z.object({
     id: z.string().min(1, "Order ID is required")

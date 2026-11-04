@@ -70,9 +70,8 @@ const updatePharmacy = async (id, data) => {
 
   Object.keys(data).forEach(key => {
     if (data[key] !== undefined) {
-      if (key === 'address' || key === 'location' || key === 'shippingSettings') {
+      if (key === 'address' || key === 'location') {
         pharmacy[key] = { ...pharmacy[key], ...data[key] };
-        if (key === 'shippingSettings') pharmacy.shippingSettings.updatedAt = new Date();
       } else {
         pharmacy[key] = data[key];
       }
