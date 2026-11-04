@@ -56,7 +56,10 @@ exports.uploadMultipleFiles = asyncHandler(async (req, res) => {
                                req.baseUrl?.includes('pharmacy-docs') ||
                                req.url?.includes('pharmacy-docs');
 
-  const docType = (req.body?.docType || req.query?.type || 'VERIFICATION_DOCUMENT');
+  const submittedDocumentTypes = req.body?.docType || req.query?.type || 'VERIFICATION_DOCUMENT';
+  const docTypes = Array.isArray(submittedDocumentTypes)
+    ? submittedDocumentTypes
+    : Array(urls.length).fill(submittedDocumentTypes);
 
   if ((isDoctorDocsUpload || isPharmacyDocsUpload) && req.userId) {
     try {
@@ -67,9 +70,9 @@ exports.uploadMultipleFiles = asyncHandler(async (req, res) => {
           (isPharmacyDocsUpload && (user.role === 'PHARMACY' || user.role === 'PARAPHARMACY')))
       ) {
         // Create document uploads array
-        const documentUploads = urls.map(url => ({
+        const documentUploads = urls.map((url, index) => ({
           fileUrl: url,
-          type: docType
+          type: String(docTypes[index] || docTypes[0] || 'VERIFICATION_DOCUMENT')
         }));
 
         // Update user's documentUploads field

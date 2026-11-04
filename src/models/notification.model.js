@@ -38,6 +38,7 @@ const notificationSchema = new mongoose.Schema({
       "RESCHEDULE_REQUEST",
       "RESCHEDULE_APPROVED",
       "RESCHEDULE_REJECTED",
+      "SUPPORT_TICKET",
       "OTHER"
     ],
     default: null

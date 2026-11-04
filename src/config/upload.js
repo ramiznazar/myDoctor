@@ -12,6 +12,9 @@ const getMulterStorage = (folderName) => {
   const folderMap = {
     profile: 'profile',
     doctorDocs: 'doctor-documents',
+    pharmacyDocs: 'pharmacy-documents',
+    supportTicket: 'support-tickets',
+    prescription: 'prescriptions',
     clinic: 'clinic',
     product: 'product',
     blog: 'blog',
@@ -35,7 +38,7 @@ const getMulterStorage = (folderName) => {
     filename: (req, file, cb) => {
       // Format: timestamp-originalname (spaces replaced with hyphens)
       const timestamp = Date.now();
-      const sanitizedName = file.originalname.replace(/\s+/g, '-');
+      const sanitizedName = path.basename(file.originalname).replace(/[^a-zA-Z0-9._-]/g, '-');
       const filename = `${timestamp}-${sanitizedName}`;
       cb(null, filename);
     }

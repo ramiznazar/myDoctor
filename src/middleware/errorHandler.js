@@ -1,5 +1,6 @@
 const { sendError } = require('../utils/response');
 const { HTTP_STATUS } = require('../types/enums');
+const multer = require('multer');
 
 /**
  * Global error handler middleware
@@ -15,6 +16,12 @@ const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR;
   let message = err.message || 'Internal server error';
   let errors = [];
+
+  if (err instanceof multer.MulterError) {
+    statusCode = HTTP_STATUS.BAD_REQUEST;
+    message = err.code === 'LIMIT_FILE_SIZE' ? 'File too large' : 'Upload error';
+    errors = [{ message: err.code === 'LIMIT_FILE_SIZE' ? 'The selected file is larger than the allowed upload size.' : err.message }];
+  }
 
   // Handle ZodError specifically
   if (err.name === 'ZodError' || err.issues) {

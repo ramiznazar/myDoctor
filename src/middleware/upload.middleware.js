@@ -154,6 +154,52 @@ const uploadMultipleImages = (folderName, maxCount = 10) => {
 };
 
 /**
+ * Upload verification/support documents.  Unlike the image-only product
+ * middleware, this deliberately supports the common records users are asked
+ * to provide during professional verification.  Keeping the filter here
+ * means bad files receive a useful 4xx response instead of an opaque browser
+ * network failure.
+ */
+const uploadMultipleDocuments = (folderName, maxCount = 10, maxFileSize = 10 * 1024 * 1024, fieldName = 'files') => {
+  const storage = getMulterStorage(folderName);
+  const allowedMimes = new Set([
+    'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+    'application/pdf', 'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ]);
+  const allowedExtensions = /\.(jpe?g|png|webp|pdf|doc|docx)$/i;
+  const upload = multer({
+    storage,
+    fileFilter: (req, file, cb) => {
+      if (allowedMimes.has(file.mimetype) || allowedExtensions.test(file.originalname || '')) return cb(null, true);
+      return cb(new Error('Unsupported file format. Upload a JPG, PNG, WebP, PDF, DOC, or DOCX file.'), false);
+    },
+    limits: { fileSize: maxFileSize, files: maxCount },
+  });
+
+  return (req, res, next) => {
+    upload.array(fieldName, maxCount)(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return sendError(res, 'File too large', [{ message: `Each file must be ${Math.floor(maxFileSize / (1024 * 1024))} MB or smaller.` }], HTTP_STATUS.BAD_REQUEST);
+          }
+          if (err.code === 'LIMIT_FILE_COUNT') {
+            return sendError(res, 'Too many files', [{ message: `You can upload up to ${maxCount} files at a time.` }], HTTP_STATUS.BAD_REQUEST);
+          }
+          return sendError(res, 'Upload error', [{ message: err.message }], HTTP_STATUS.BAD_REQUEST);
+        }
+        return sendError(res, 'Invalid file', [{ message: err.message || 'The selected file cannot be uploaded.' }], HTTP_STATUS.BAD_REQUEST);
+      }
+      if (!req.files?.length) {
+        return sendError(res, 'No files uploaded', [{ message: 'Please select at least one document to upload.' }], HTTP_STATUS.BAD_REQUEST);
+      }
+      return next();
+    });
+  };
+};
+
+/**
  * Upload single file for chat (supports all file types)
  * @param {string} folderName - Folder name for upload
  * @returns {Function} Express middleware
@@ -302,6 +348,7 @@ const uploadMultipleChatFiles = (folderName, maxCount = 10) => {
 module.exports = {
   uploadSingleImage,
   uploadMultipleImages,
+  uploadMultipleDocuments,
   uploadSingleChatFile,
   uploadMultipleChatFiles
 };

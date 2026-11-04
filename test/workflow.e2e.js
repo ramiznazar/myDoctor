@@ -9,6 +9,8 @@
  */
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 
@@ -23,6 +25,7 @@ const Conversation = require('../src/models/conversation.model');
 const Notification = require('../src/models/notification.model');
 const Pharmacy = require('../src/models/pharmacy.model');
 const Product = require('../src/models/product.model');
+const SupportTicket = require('../src/models/supportTicket.model');
 const { sendUpcomingAppointmentNotifications } = require('../src/services/appointmentNotification.service');
 
 const dayName = (date) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getUTCDay()];
@@ -46,6 +49,13 @@ const createApi = (baseUrl) => async (path, { method = 'GET', token, body } = {}
   });
   const payload = await response.json();
   return { status: response.status, payload };
+};
+
+const createMultipartApi = (baseUrl) => async (route, { token, formData } = {}) => {
+  const response = await fetch(`${baseUrl}${route}`, {
+    method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData,
+  });
+  return { status: response.status, payload: await response.json() };
 };
 
 const expectOk = (result, label) => {
@@ -192,7 +202,7 @@ const main = async () => {
   try {
     await mongoose.connect(config.MONGO_URI);
     await mongoose.connection.dropDatabase();
-    await Promise.all([Appointment.syncIndexes(), Conversation.syncIndexes()]);
+    await Promise.all([Appointment.syncIndexes(), Conversation.syncIndexes(), SupportTicket.syncIndexes()]);
 
     const {
       admin, doctor, patient, pharmacy, parapharmacy, pharmacyPlan,
@@ -207,6 +217,26 @@ const main = async () => {
     server = await listen();
     const address = server.address();
     const api = createApi(`http://127.0.0.1:${address.port}/api`);
+    const multipartApi = createMultipartApi(`http://127.0.0.1:${address.port}/api`);
+
+    // Verification uploads accept professional document formats on the
+    // backend, report a precise validation response, persist document types,
+    // and no longer surface as a generic client-side network failure.
+    const documentUpload = new FormData();
+    documentUpload.append('files', new Blob(['workflow credential'], { type: 'application/pdf' }), 'medical-registration.pdf');
+    documentUpload.append('docType', 'MEDICAL_REGISTRATION_CERTIFICATE');
+    const uploadedDocument = expectOk(await multipartApi('/upload/doctor-docs', { token: doctorToken, formData: documentUpload }), 'doctor verification document upload');
+    assert.equal(uploadedDocument.urls.length, 1, 'doctor document upload returns its saved URL');
+    const doctorAfterUpload = await User.findById(doctor._id).lean();
+    assert.equal(doctorAfterUpload.documentUploads.at(-1).type, 'MEDICAL_REGISTRATION_CERTIFICATE', 'uploaded verification document retains its type');
+    const uploadedPath = path.join(process.cwd(), uploadedDocument.urls[0].replace(/^\/uploads\//, 'uploads/'));
+    assert.equal(fs.existsSync(uploadedPath), true, 'verification document is stored by the backend');
+    fs.unlinkSync(uploadedPath);
+    const oversizedDocument = new FormData();
+    oversizedDocument.append('files', new Blob([Buffer.alloc(10 * 1024 * 1024 + 1)], { type: 'application/pdf' }), 'too-large.pdf');
+    const oversizedResponse = await multipartApi('/upload/doctor-docs', { token: doctorToken, formData: oversizedDocument });
+    assert.equal(oversizedResponse.status, 400, 'oversized verification document receives a validation response');
+    assert.equal(oversizedResponse.payload.message, 'File too large', 'oversized document receives a clear size error');
 
     // Setup is server-backed, which makes the pharmacy/parapharmacy prompt
     // durable across browser sessions instead of a dismissible UI flag.
@@ -559,7 +589,47 @@ const main = async () => {
     assert.equal(parapharmacySupport.conversationType, 'ADMIN_PARAPHARMACY');
     assert.equal(doctorSupport.conversationType, 'ADMIN_DOCTOR');
 
-    console.log('PASS: appointment/video, canonical chat, onboarding, rich variants, prescription approval, checkout/shipping, and Admin support workflows');
+    // Patient support tickets are a separate, private workflow rather than a
+    // generic chat. Both parties receive the exact same threaded history,
+    // unread state is cleared only by the recipient, and lifecycle rules
+    // prevent messages on resolved or closed tickets until reopened.
+    const supportTicket = expectOk(await api('/support-tickets', {
+      method: 'POST', token: patientToken,
+      body: {
+        subject: 'Video consultation help', category: 'VIDEO_CALL', priority: 'HIGH',
+        description: 'I need help joining my confirmed consultation.',
+        relatedRecord: { type: 'APPOINTMENT', recordId: appointment._id.toString() },
+      },
+    }), 'patient creates support ticket');
+    assert.equal(supportTicket.messages.length, 1, 'ticket begins with the patient request in its history');
+    const supportUnread = expectOk(await api('/support-tickets/admin/unread-count', { token: adminToken }), 'Admin ticket unread count');
+    assert.equal(supportUnread.unreadCount, 1, 'new ticket increments only the Admin ticket indicator');
+    const adminTicket = expectOk(await api(`/support-tickets/admin/${supportTicket._id}`, { token: adminToken }), 'Admin opens patient support ticket');
+    assert.equal(adminTicket.unreadForAdmin, false, 'opening ticket marks it read for Admin');
+    const patientUnreadBeforeReply = expectOk(await api('/support-tickets/unread-count', { token: patientToken }), 'patient ticket unread count before reply');
+    assert.equal(patientUnreadBeforeReply.unreadCount, 0, 'patient has no unread reply before Admin responds');
+    expectOk(await api(`/support-tickets/admin/${supportTicket._id}/messages`, {
+      method: 'POST', token: adminToken, body: { body: 'We are checking your consultation access now.' },
+    }), 'Admin replies to patient support ticket');
+    const patientUnreadAfterReply = expectOk(await api('/support-tickets/unread-count', { token: patientToken }), 'patient unread ticket after Admin reply');
+    assert.equal(patientUnreadAfterReply.unreadCount, 1, 'Admin reply increments the patient ticket indicator');
+    const patientTicket = expectOk(await api(`/support-tickets/${supportTicket._id}`, { token: patientToken }), 'patient opens support ticket reply');
+    assert.equal(patientTicket.status, 'WAITING_FOR_PATIENT', 'Admin reply moves ticket to waiting for patient');
+    assert.equal(patientTicket.unreadForPatient, false, 'patient reading ticket clears only their unread state');
+    expectOk(await api(`/support-tickets/${supportTicket._id}/messages`, {
+      method: 'POST', token: patientToken, body: { body: 'Thank you, please let me know when it is fixed.' },
+    }), 'patient replies to ticket');
+    const ticketAfterPatientReply = expectOk(await api(`/support-tickets/admin/${supportTicket._id}`, { token: adminToken }), 'Admin sees patient follow-up');
+    assert.equal(ticketAfterPatientReply.status, 'IN_PROGRESS', 'patient reply resumes an in-progress ticket');
+    expectOk(await api(`/support-tickets/admin/${supportTicket._id}`, { method: 'PATCH', token: adminToken, body: { status: 'RESOLVED' } }), 'Admin resolves support ticket');
+    const blockedResolvedReply = await api(`/support-tickets/${supportTicket._id}/messages`, { method: 'POST', token: patientToken, body: { body: 'This must be blocked while resolved.' } });
+    assert.equal(blockedResolvedReply.status, 400, 'resolved ticket cannot receive messages before reopening');
+    expectOk(await api(`/support-tickets/${supportTicket._id}/reopen`, { method: 'POST', token: patientToken }), 'patient reopens resolved ticket');
+    expectOk(await api(`/support-tickets/admin/${supportTicket._id}`, { method: 'PATCH', token: adminToken, body: { status: 'CLOSED' } }), 'Admin closes support ticket');
+    const blockedClosedReply = await api(`/support-tickets/${supportTicket._id}/messages`, { method: 'POST', token: patientToken, body: { body: 'This must be blocked after close.' } });
+    assert.equal(blockedClosedReply.status, 400, 'closed ticket cannot receive additional messages');
+
+    console.log('PASS: appointment/video, canonical chat, onboarding, rich variants, prescription approval, checkout/shipping, Admin support, and patient support-ticket workflows');
   } finally {
     if (server) await close(server);
     if (mongoose.connection.readyState) {
