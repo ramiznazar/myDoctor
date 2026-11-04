@@ -5,6 +5,10 @@ const DoctorProfile = require('../models/doctorProfile.model');
 const Review = require('../models/review.model');
 const Conversation = require('../models/conversation.model');
 const ChatMessage = require('../models/chatMessage.model');
+const Order = require('../models/order.model');
+const WithdrawalRequest = require('../models/withdrawalRequest.model');
+const SupportTicket = require('../models/supportTicket.model');
+const ContactQuery = require('../models/contactQuery.model');
 
 /**
  * Get dashboard statistics
@@ -55,6 +59,44 @@ const getDashboardStats = async () => {
     doctorsPendingApproval,
     activeSubscriptionsCount,
     todaysAppointmentsCount
+  };
+};
+
+/**
+ * Counts that represent work waiting for an administrator.  These are kept
+ * server-side so sidebar indicators are based on the same authoritative data
+ * as the lists and remain correct after another user creates or handles work.
+ */
+const getSidebarCounts = async () => {
+  const [
+    pendingAppointments,
+    pendingDoctorVerifications,
+    pendingPharmacyVerifications,
+    pendingOrders,
+    pendingPayments,
+    pendingWithdrawals,
+    unreadPatientTickets,
+    newContactInquiries
+  ] = await Promise.all([
+    Appointment.countDocuments({ status: 'PENDING' }),
+    User.countDocuments({ role: 'DOCTOR', status: 'PENDING' }),
+    User.countDocuments({ role: { $in: ['PHARMACY', 'PARAPHARMACY'] }, status: 'PENDING' }),
+    Order.countDocuments({ status: 'PENDING' }),
+    Transaction.countDocuments({ status: 'PENDING', amount: { $gt: 0 } }),
+    WithdrawalRequest.countDocuments({ status: 'PENDING' }),
+    SupportTicket.countDocuments({ unreadForAdmin: true }),
+    ContactQuery.countDocuments({ status: 'NEW' })
+  ]);
+
+  return {
+    pendingAppointments,
+    pendingDoctorVerifications,
+    pendingPharmacyVerifications,
+    pendingOrders,
+    pendingPayments,
+    pendingWithdrawals,
+    unreadPatientTickets,
+    newContactInquiries
   };
 };
 
@@ -312,6 +354,7 @@ const getDoctorsForChat = async (adminId, filter = {}) => {
 
 module.exports = {
   getDashboardStats,
+  getSidebarCounts,
   deleteUser,
   getSystemActivity,
   getAllReviews,

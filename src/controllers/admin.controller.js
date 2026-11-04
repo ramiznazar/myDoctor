@@ -12,6 +12,16 @@ exports.getDashboardStats = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Small, authoritative set of pending/unread counts used by the admin
+ * navigation.  It intentionally does not alter a record merely because the
+ * menu is viewed; action-based work remains visible until it is handled.
+ */
+exports.getSidebarCounts = asyncHandler(async (req, res) => {
+  const result = await adminService.getSidebarCounts();
+  res.json({ success: true, message: 'OK', data: result });
+});
+
+/**
  * Get all patients
  */
 exports.getAllPatients = asyncHandler(async (req, res) => {

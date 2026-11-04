@@ -685,10 +685,14 @@ const main = async () => {
       method: 'POST',
       body: { name: 'Contact Visitor', email: 'visitor@workflow.example', phone: '+49 30 555 0102', services: 'Appointments', message: 'Please help me understand how an online appointment works.' },
     }), 'visitor submits Contact Us inquiry');
+    const sidebarCountsWithInquiry = expectOk(await api('/admin/sidebar-counts', { token: adminToken }), 'Admin loads live sidebar counts');
+    assert.equal(sidebarCountsWithInquiry.newContactInquiries, 1, 'new contact inquiries appear in the Admin sidebar count');
     const contactInquiries = expectOk(await api('/contact-queries?status=NEW', { token: adminToken }), 'Admin lists new contact inquiries');
     assert.equal(contactInquiries.queries.some((item) => String(item._id) === String(contactInquiry._id)), true, 'Admin receives the public inquiry');
     const resolvedInquiry = expectOk(await api(`/contact-queries/${contactInquiry._id}`, { method: 'PATCH', token: adminToken, body: { status: 'RESOLVED', adminNotes: 'Sent appointment guidance.' } }), 'Admin resolves contact inquiry');
     assert.equal(resolvedInquiry.status, 'RESOLVED', 'contact inquiry retains its Admin status update');
+    const sidebarCountsAfterResolution = expectOk(await api('/admin/sidebar-counts', { token: adminToken }), 'Admin refreshes sidebar counts after handling inquiry');
+    assert.equal(sidebarCountsAfterResolution.newContactInquiries, 0, 'handled contact inquiries leave the Admin sidebar count');
 
     console.log('PASS: appointment/video, canonical chat, onboarding, rich variants, prescription approval, checkout/shipping, Admin support attachments, contact inquiries, and patient support-ticket workflows');
   } finally {

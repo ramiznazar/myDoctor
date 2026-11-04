@@ -26,6 +26,17 @@ router.get(
 );
 
 /**
+ * @route   GET /admin/sidebar-counts
+ * @desc    Get pending and unread work counts for the admin sidebar
+ * @access  Private (Admin only)
+ */
+router.get(
+  '/sidebar-counts',
+  authGuard(['ADMIN']),
+  asyncHandler(adminController.getSidebarCounts)
+);
+
+/**
  * @route   GET /admin/doctors
  * @desc    Get all doctors with filtering
  * @access  Private (Admin only)
