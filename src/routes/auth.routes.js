@@ -1,4 +1,5 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const {
@@ -7,6 +8,9 @@ const {
   adminApproveDoctorValidator,
   adminApprovePharmacyValidator,
   changePasswordValidator,
+  verificationEmailValidator,
+  verifyEmailValidator,
+  changePasswordCodeValidator,
   refreshTokenValidator,
   requestPasswordResetValidator,
   verifyPasswordResetCodeValidator,
@@ -18,6 +22,22 @@ const validate = require('../middleware/validate');
 const authGuard = require('../middleware/authGuard');
 const asyncHandler = require('../middleware/asyncHandler');
 
+const limitMessage = 'Troppi tentativi. Attendi qualche minuto prima di riprovare.';
+const codeDeliveryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: limitMessage },
+});
+const codeVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: limitMessage },
+});
+
 /**
  * @route   POST /api/auth/register
  * @desc    Register a new user (DOCTOR or PATIENT)
@@ -28,6 +48,9 @@ router.post(
   validate(registerValidator),
   asyncHandler(authController.register)
 );
+
+router.post('/verify-email', codeVerificationLimiter, validate(verifyEmailValidator), asyncHandler(authController.verifyEmail));
+router.post('/resend-email-verification', codeDeliveryLimiter, validate(verificationEmailValidator), asyncHandler(authController.resendEmailVerification));
 
 router.post(
   '/phone-otp/send',
@@ -85,6 +108,9 @@ router.post(
   asyncHandler(authController.changePassword)
 );
 
+router.post('/change-password/request-code', codeDeliveryLimiter, authGuard([]), asyncHandler(authController.requestChangePasswordCode));
+router.post('/change-password/verify-code', codeVerificationLimiter, authGuard([]), validate(changePasswordCodeValidator), asyncHandler(authController.verifyChangePasswordCode));
+
 /**
  * @route   POST /api/auth/refresh-token
  * @desc    Refresh JWT token
@@ -103,6 +129,7 @@ router.post(
  */
 router.post(
   '/forgot-password',
+  codeDeliveryLimiter,
   validate(requestPasswordResetValidator),
   asyncHandler(authController.requestPasswordReset)
 );
@@ -114,6 +141,7 @@ router.post(
  */
 router.post(
   '/verify-reset-code',
+  codeVerificationLimiter,
   validate(verifyPasswordResetCodeValidator),
   asyncHandler(authController.verifyPasswordResetCode)
 );

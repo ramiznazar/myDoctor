@@ -2,7 +2,31 @@ const { z } = require('zod');
 
 const imageUrl = z.union([z.string().url('Invalid image URL'), z.string().regex(/^\/uploads\//, 'Image must be a valid upload path')]);
 const optionalText = z.string().max(5000).optional().nullable();
-const optionalNumber = z.coerce.number().nonnegative().optional().nullable();
+// `z.coerce.number()` turns an empty string into zero.  That is especially
+// dangerous for prices and stock: an unfilled field looked like an intentional
+// zero value.  Normalize blank optional values to null and make required
+// numeric values explicitly reject blanks before coercion.
+const toNumberOrBlank = (value) => {
+  if (value === '' || value === null || value === undefined) return undefined;
+  return typeof value === 'string' ? Number(value) : value;
+};
+const optionalNumber = z.preprocess(
+  (value) => {
+    if (value === undefined) return undefined;
+    return value === '' || value === null ? null : toNumberOrBlank(value);
+  },
+  z.number({ invalid_type_error: 'Enter a valid number' }).nonnegative('Value must be non-negative').nullable().optional(),
+);
+const requiredNonNegativeNumber = (label) => z.preprocess(
+  toNumberOrBlank,
+  z.number({ required_error: `${label} is required`, invalid_type_error: `${label} must be a valid number` })
+    .nonnegative(`${label} must be non-negative`),
+);
+const requiredWholeNumber = (label) => z.preprocess(
+  toNumberOrBlank,
+  z.number({ required_error: `${label} is required`, invalid_type_error: `${label} must be a valid number` })
+    .int(`${label} must be a whole number`).nonnegative(`${label} must be non-negative`),
+);
 
 const variantValidator = z.object({
   _id: z.string().optional(),
@@ -13,12 +37,18 @@ const variantValidator = z.object({
   strengthUnit: z.string().max(50).optional().nullable(),
   dosageForm: z.string().max(100).optional().nullable(),
   packageType: z.string().max(100).optional().nullable(),
-  unitsPerPack: z.coerce.number().int().nonnegative().optional().nullable(),
+  unitsPerPack: z.preprocess(
+    (value) => {
+      if (value === undefined) return undefined;
+      return value === '' || value === null ? null : toNumberOrBlank(value);
+    },
+    z.number({ invalid_type_error: 'Units per pack must be a valid number' }).int('Units per pack must be a whole number').nonnegative('Units per pack must be non-negative').nullable().optional(),
+  ),
   unitLabel: z.string().max(80).optional().nullable(),
   packageDescription: z.string().max(500).optional().nullable(),
-  price: z.coerce.number().nonnegative('Price must be non-negative'),
+  price: requiredNonNegativeNumber('Price'),
   discountPrice: optionalNumber,
-  stock: z.coerce.number().int().nonnegative('Stock must be a non-negative integer'),
+  stock: requiredWholeNumber('Stock'),
   isDefault: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
@@ -48,8 +78,14 @@ const parapharmacyDetailsValidator = z.object({
 
 const productFields = {
   name: z.string().min(1, 'Product name is required').max(250).optional(),
-  price: z.coerce.number().nonnegative().optional(),
-  stock: z.coerce.number().int().nonnegative().optional(),
+  price: optionalNumber,
+  stock: z.preprocess(
+    (value) => {
+      if (value === undefined) return undefined;
+      return value === '' || value === null ? null : toNumberOrBlank(value);
+    },
+    z.number({ invalid_type_error: 'Stock must be a valid number' }).int('Stock must be a whole number').nonnegative('Stock must be non-negative').nullable().optional(),
+  ),
   description: optionalText,
   i18n: z.object({
     name: z.record(z.string()).optional(), description: z.record(z.string()).optional(),
@@ -73,7 +109,7 @@ const productFields = {
 };
 
 const createProductValidator = z.object({
-  body: z.object({ ...productFields, name: z.string().min(1, 'Product name is required').max(250), price: z.coerce.number().nonnegative(), stock: z.coerce.number().int().nonnegative(), sellerId: z.string().optional(), sellerType: z.enum(['DOCTOR', 'PHARMACY', 'PARAPHARMACY', 'ADMIN']).optional(), pharmacyId: z.string().optional() }),
+  body: z.object({ ...productFields, name: z.string().min(1, 'Product name is required').max(250), price: requiredNonNegativeNumber('Price'), stock: requiredWholeNumber('Stock'), sellerId: z.string().optional(), sellerType: z.enum(['DOCTOR', 'PHARMACY', 'PARAPHARMACY', 'ADMIN']).optional(), pharmacyId: z.string().optional() }),
 });
 
 const updateProductValidator = z.object({

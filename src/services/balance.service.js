@@ -1,6 +1,7 @@
 const User = require('../models/user.model');
 const WithdrawalRequest = require('../models/withdrawalRequest.model');
 const Transaction = require('../models/transaction.model');
+const emailService = require('./email.service');
 
 /**
  * Calculate net amount after platform fee
@@ -42,7 +43,7 @@ const creditBalance = async (userId, amount, transactionType, metadata = {}) => 
   await user.save();
 
   // Create transaction record for the credit
-  await Transaction.create({
+  const transaction = await Transaction.create({
     userId,
     amount: netAmount,
     currency: 'EUR',
@@ -59,6 +60,14 @@ const creditBalance = async (userId, amount, transactionType, metadata = {}) => 
       ...metadata
     }
   });
+
+  await emailService.sendBalanceChangeEmail({
+    user,
+    transaction,
+    balance: user.balance,
+    action: 'CREDIT',
+    label: transactionType,
+  }).catch((error) => console.error('[email] balance credit queue failed:', error.message));
 
   return {
     userId: user._id,
@@ -101,7 +110,7 @@ const debitBalance = async (userId, amount, transactionType, metadata = {}) => {
   await user.save();
 
   // Create transaction record for the debit
-  await Transaction.create({
+  const transaction = await Transaction.create({
     userId,
     amount: -amount, // Negative for debit
     currency: 'EUR',
@@ -115,6 +124,14 @@ const debitBalance = async (userId, amount, transactionType, metadata = {}) => {
       ...metadata
     }
   });
+
+  await emailService.sendBalanceChangeEmail({
+    user,
+    transaction,
+    balance: user.balance,
+    action: transactionType === 'REFUND' ? 'REFUND' : 'DEBIT',
+    label: transactionType,
+  }).catch((error) => console.error('[email] balance debit queue failed:', error.message));
 
   return {
     userId: user._id,
@@ -168,7 +185,7 @@ const topUpBalance = async (userId, amount, adminId) => {
   await user.save();
 
   // Create transaction record
-  await Transaction.create({
+  const transaction = await Transaction.create({
     userId,
     amount,
     currency: 'EUR',
@@ -182,6 +199,14 @@ const topUpBalance = async (userId, amount, adminId) => {
       timestamp: new Date()
     }
   });
+
+  await emailService.sendBalanceChangeEmail({
+    user,
+    transaction,
+    balance: user.balance,
+    action: 'TOP_UP',
+    label: 'Ricarica amministrativa',
+  }).catch((error) => console.error('[email] balance top-up queue failed:', error.message));
 
   return {
     userId: user._id,
@@ -231,6 +256,9 @@ const requestWithdrawal = async (userId, amount, paymentDetails = {}) => {
     paymentMethod: paymentDetails.paymentMethod || null,
     paymentDetails: paymentDetails.details || null
   });
+
+  await emailService.sendWithdrawalStatusEmail({ user, request: withdrawalRequest, event: 'PENDING' })
+    .catch((error) => console.error('[email] withdrawal request email queue failed:', error.message));
 
   return withdrawalRequest;
 };
@@ -317,6 +345,9 @@ const approveWithdrawal = async (requestId, adminId, withdrawalFeePercent = null
     }
   });
 
+  await emailService.sendWithdrawalStatusEmail({ user, request, event: 'APPROVED' })
+    .catch((error) => console.error('[email] withdrawal approval email queue failed:', error.message));
+
   // Note: Fee is already included in the withdrawal amount, so no separate fee transaction needed
   // The fee is just a portion of the withdrawal that the doctor doesn't receive
 
@@ -345,6 +376,10 @@ const rejectWithdrawal = async (requestId, adminId, reason = null) => {
   request.rejectionReason = reason || 'Rejected by admin';
   request.approvedBy = adminId;
   await request.save();
+
+  const user = await User.findById(request.userId).select('fullName email role');
+  await emailService.sendWithdrawalStatusEmail({ user, request, event: 'REJECTED' })
+    .catch((error) => console.error('[email] withdrawal rejection email queue failed:', error.message));
 
   return request;
 };

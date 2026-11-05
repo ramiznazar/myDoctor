@@ -1,4 +1,5 @@
 const ContactQuery = require('../models/contactQuery.model');
+const { sendContactQueryReceivedEmail, sendContactQueryStatusEmail, sendContactQueryResolutionEmail } = require('./email.service');
 
 const STATUSES = ['NEW', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 const clean = (value, max) => String(value || '').trim().slice(0, max);
@@ -13,7 +14,9 @@ const createContactQuery = async (payload = {}) => {
   if (name.length < 2) throw error('Enter your name');
   if (!/^\S+@\S+\.\S+$/.test(email)) throw error('Enter a valid email address');
   if (message.length < 10) throw error('Please provide at least 10 characters so we can help.');
-  return ContactQuery.create({ name, email, phone, services, message });
+  const query = await ContactQuery.create({ name, email, phone, services, message });
+  await sendContactQueryReceivedEmail({ query });
+  return query;
 };
 
 const listContactQueries = async (options = {}) => {
@@ -47,6 +50,25 @@ const updateContactQuery = async (id, adminId, payload = {}) => {
   if (status === 'RESOLVED' && !query.resolvedAt) { query.resolvedAt = new Date(); query.resolvedBy = adminId; }
   if (status !== 'RESOLVED') { query.resolvedAt = null; query.resolvedBy = null; }
   await query.save();
+  await sendContactQueryStatusEmail({ query });
+  return getContactQuery(query._id);
+};
+
+const resolveContactQuery = async (id, adminId, payload = {}) => {
+  const responseMessage = clean(payload.responseMessage, 5000);
+  if (!responseMessage) throw error('Write a response for the requester before resolving this inquiry');
+  const query = await ContactQuery.findById(id);
+  if (!query) throw error('Contact inquiry not found', 404);
+  if (query.status === 'RESOLVED') throw error('This inquiry has already been resolved');
+
+  query.status = 'RESOLVED';
+  query.resolutionMessage = responseMessage;
+  query.responseQueuedAt = new Date();
+  query.resolvedAt = new Date();
+  query.resolvedBy = adminId;
+  if (payload.adminNotes !== undefined) query.adminNotes = clean(payload.adminNotes, 5000);
+  await query.save();
+  await sendContactQueryResolutionEmail({ query, responseMessage });
   return getContactQuery(query._id);
 };
 
@@ -56,4 +78,4 @@ const deleteContactQuery = async (id) => {
   return { message: 'Contact inquiry deleted' };
 };
 
-module.exports = { createContactQuery, listContactQueries, getContactQuery, updateContactQuery, deleteContactQuery };
+module.exports = { createContactQuery, listContactQueries, getContactQuery, updateContactQuery, resolveContactQuery, deleteContactQuery };

@@ -35,10 +35,16 @@ module.exports = {
   UPLOAD_GENERAL: process.env.UPLOAD_GENERAL,
 
   // email
+  EMAIL_ENABLED: !['false', '0', 'no'].includes(String(process.env.EMAIL_ENABLED || 'true').trim().toLowerCase()),
   SMTP_HOST: process.env.SMTP_HOST,
   SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_SECURE: ['true', '1', 'yes'].includes(String(process.env.SMTP_SECURE || '').trim().toLowerCase()),
+  SMTP_REQUIRE_TLS: !['false', '0', 'no'].includes(String(process.env.SMTP_REQUIRE_TLS || 'true').trim().toLowerCase()),
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASS: process.env.SMTP_PASS,
+  SMTP_FROM: process.env.SMTP_FROM,
+  SMTP_FROM_NAME: process.env.SMTP_FROM_NAME || 'My Doctor',
+  APP_URL: (process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, ''),
 
   // payment
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,

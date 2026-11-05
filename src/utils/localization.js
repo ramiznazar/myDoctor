@@ -46,6 +46,8 @@ const getLocalizedField = ({ baseValue, translations, lang, fallbackLang = DEFAU
   for (const key of tryKeys) {
     const value = getFromTranslations(key);
     if (typeof value === 'string' && value.trim() !== '') return value;
+    if (Array.isArray(value) && value.length > 0) return value;
+    if (value && typeof value === 'object') return value;
   }
 
   return baseValue;
@@ -81,6 +83,36 @@ const localizeProduct = (productDoc, lang) => {
     lang,
   });
 
+  obj.tags = getLocalizedField({
+    baseValue: obj.tags,
+    translations: i18n.tags,
+    lang,
+  });
+
+  const localizedDetails = getLocalizedField({
+    baseValue: null,
+    translations: i18n.details,
+    lang,
+  });
+
+  if (localizedDetails && typeof localizedDetails === 'object' && !Array.isArray(localizedDetails)) {
+    if (localizedDetails.medicineDetails && typeof localizedDetails.medicineDetails === 'object') {
+      obj.medicineDetails = { ...(obj.medicineDetails || {}), ...localizedDetails.medicineDetails };
+    }
+    if (localizedDetails.parapharmacyDetails && typeof localizedDetails.parapharmacyDetails === 'object') {
+      obj.parapharmacyDetails = { ...(obj.parapharmacyDetails || {}), ...localizedDetails.parapharmacyDetails };
+    }
+    if (Array.isArray(localizedDetails.tags) && localizedDetails.tags.length > 0) {
+      obj.tags = localizedDetails.tags;
+    }
+    if (Array.isArray(localizedDetails.variants)) {
+      obj.variants = (obj.variants || []).map((variant, index) => {
+        const translation = localizedDetails.variants.find((entry) => String(entry?._id || '') === String(variant?._id || '')) || localizedDetails.variants[index];
+        return translation && typeof translation === 'object' ? { ...variant, ...translation, _id: variant._id } : variant;
+      });
+    }
+  }
+
   return obj;
 };
 
@@ -99,6 +131,12 @@ const localizeBlogPost = (blogPostDoc, lang) => {
   obj.content = getLocalizedField({
     baseValue: obj.content,
     translations: i18n.content,
+    lang,
+  });
+
+  obj.tags = getLocalizedField({
+    baseValue: obj.tags,
+    translations: i18n.tags,
     lang,
   });
 

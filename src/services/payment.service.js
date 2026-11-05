@@ -5,6 +5,8 @@ const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const Product = require('../models/product.model');
 const DoctorSubscription = require('../models/doctorSubscription.model');
 const balanceService = require('./balance.service');
+const emailService = require('./email.service');
+const env = require('../config/env');
 
 /**
  * Process appointment payment
@@ -76,6 +78,21 @@ const processAppointmentPayment = async (userId, appointmentId, ignoredAmount, p
   }
   await appointment.save();
 
+  const [patient, doctor] = await Promise.all([
+    User.findById(appointment.patientId).select('fullName email role'),
+    User.findById(appointment.doctorId).select('fullName email role'),
+  ]);
+  await Promise.all([
+    emailService.sendPaymentConfirmationEmail({
+      recipient: patient, transaction, role: 'PATIENT',
+      context: { kind: 'APPOINTMENT_PAYMENT', label: `Appuntamento ${appointment.appointmentNumber || ''}`, message: 'Il pagamento del tuo appuntamento è stato ricevuto correttamente.', url: `${env.APP_URL}/patient/payments-history` },
+    }),
+    emailService.sendPaymentConfirmationEmail({
+      recipient: doctor, transaction, role: 'DOCTOR',
+      context: { kind: 'APPOINTMENT_RECEIPT', label: `Appuntamento ${appointment.appointmentNumber || ''}`, message: 'È stato registrato un pagamento per un tuo appuntamento.', url: `${env.APP_URL}/doctor/payments-history` },
+    }),
+  ]).catch((error) => console.error('[email] appointment payment queue failed:', error.message));
+
   return transaction;
 };
 
@@ -134,6 +151,13 @@ const processSubscriptionPayment = async (doctorId, planId, amount, paymentMetho
   doctor.subscriptionExpiresAt = endDate;
   await doctor.save();
 
+  await emailService.sendSubscriptionPurchaseEmail({ user: doctor, plan, expiresAt: endDate, role: 'DOCTOR' })
+    .catch((error) => console.error('[email] subscription purchase queue failed:', error.message));
+  await emailService.sendPaymentConfirmationEmail({
+    recipient: doctor, transaction, role: 'DOCTOR',
+    context: { kind: 'SUBSCRIPTION_PAYMENT', label: `Abbonamento ${plan.name}`, message: 'Il pagamento del tuo abbonamento è stato registrato correttamente.', url: `${env.APP_URL}/doctor/subscription-plans` },
+  }).catch((error) => console.error('[email] subscription payment queue failed:', error.message));
+
   return { transaction, subscription };
 };
 
@@ -168,6 +192,12 @@ const processProductPayment = async (userId, productId, amount, paymentMethod = 
     product.stock -= 1;
     await product.save();
   }
+
+  const patient = await User.findById(userId).select('fullName email role');
+  await emailService.sendPaymentConfirmationEmail({
+    recipient: patient, transaction, role: 'PATIENT',
+    context: { kind: 'PRODUCT_PAYMENT', label: product.name, message: 'Il pagamento del prodotto è stato registrato correttamente.', url: `${env.APP_URL}/patient/payments-history` },
+  }).catch((error) => console.error('[email] product payment queue failed:', error.message));
 
   return transaction;
 };
@@ -254,6 +284,15 @@ const processOrderPayment = async (orderId, paymentMethod = 'DUMMY', amount = nu
     console.error('Error crediting seller balance for order:', error);
     // You might want to add a retry mechanism or notification here
   }
+
+  const [patient, seller] = await Promise.all([
+    User.findById(order.patientId).select('fullName email role'),
+    User.findById(order.ownerId).select('fullName email role'),
+  ]);
+  await Promise.all([
+    emailService.sendPaymentConfirmationEmail({ recipient: patient, transaction, role: 'PATIENT', context: { kind: 'ORDER_PAYMENT_LEGACY', label: `Ordine ${order.orderNumber || ''}`, message: 'Il pagamento del tuo ordine è stato registrato correttamente.', url: `${env.APP_URL}/patient/orders` } }),
+    emailService.sendPaymentConfirmationEmail({ recipient: seller, transaction, role: seller?.role, context: { kind: 'ORDER_RECEIPT_LEGACY', label: `Ordine ${order.orderNumber || ''}`, message: 'È stato registrato il pagamento di un nuovo ordine.', url: `${env.APP_URL}/pharmacy/orders` } }),
+  ]).catch((error) => console.error('[email] legacy order payment queue failed:', error.message));
 
   return { transaction, order };
 };
@@ -364,6 +403,17 @@ const refundTransaction = async (transactionId) => {
       await order.save();
     }
   }
+
+  const refundRecipient = await User.findById(transaction.userId).select('fullName email role');
+  await emailService.sendRefundEmail({
+    recipient: refundRecipient,
+    transaction,
+    label: transaction.relatedAppointmentId
+      ? `Appuntamento ${transaction.relatedAppointmentId.appointmentNumber || ''}`.trim()
+      : transaction.relatedOrderId
+        ? `Ordine ${transaction.relatedOrderId.orderNumber || ''}`.trim()
+        : 'Transazione My Doctor',
+  }).catch((error) => console.error('[email] refund email queue failed:', error.message));
 
   return transaction;
 };

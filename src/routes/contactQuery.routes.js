@@ -6,5 +6,6 @@ router.post('/', controller.create);
 router.get('/', authGuard(['ADMIN']), controller.list);
 router.get('/:id', authGuard(['ADMIN']), controller.get);
 router.patch('/:id', authGuard(['ADMIN']), controller.update);
+router.post('/:id/resolve', authGuard(['ADMIN']), controller.resolve);
 router.delete('/:id', authGuard(['ADMIN']), controller.remove);
 module.exports = router;

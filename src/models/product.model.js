@@ -80,6 +80,19 @@ const productSchema = new mongoose.Schema({
       type: Map,
       of: String,
       default: undefined
+    },
+    // Product details, variants and tags can contain customer-facing prose.
+    // They are stored by language so the public API can return reviewed copy
+    // instead of attempting machine translation at render time.
+    tags: {
+      type: Map,
+      of: [String],
+      default: undefined
+    },
+    details: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: undefined
     }
   },
   sku: {

@@ -100,6 +100,7 @@ const listBlogPosts = async (filter = {}, options = {}) => {
   const baseLang = lang ? lang.split('-')[0] : null;
 
   const query = {};
+  const localizedFilters = [];
 
   if (authorId) {
     query.authorId = authorId;
@@ -113,7 +114,12 @@ const listBlogPosts = async (filter = {}, options = {}) => {
     // Handle both array and comma-separated string
     const tagsArray = Array.isArray(tags) ? tags : (typeof tags === 'string' ? tags.split(',').map(t => t.trim()).filter(t => t) : []);
     if (tagsArray.length > 0) {
-      query.tags = { $in: tagsArray };
+      const tagFilters = [{ tags: { $in: tagsArray } }];
+      const translationKeys = [...new Set([lang, baseLang].filter(Boolean))];
+      translationKeys.forEach((key) => {
+        tagFilters.push({ [`i18n.tags.${key}`]: { $in: tagsArray } });
+      });
+      localizedFilters.push({ $or: tagFilters });
     }
   }
 
@@ -133,7 +139,11 @@ const listBlogPosts = async (filter = {}, options = {}) => {
       searchOr.push({ [`i18n.content.${baseLang}`]: { $regex: search, $options: 'i' } });
     }
 
-    query.$or = searchOr;
+    localizedFilters.push({ $or: searchOr });
+  }
+
+  if (localizedFilters.length > 0) {
+    query.$and = localizedFilters;
   }
 
   const skip = (page - 1) * limit;

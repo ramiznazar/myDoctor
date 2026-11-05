@@ -50,7 +50,13 @@ const validate = (validator) => {
       const result = schema.safeParse(dataToValidate);
 
       if (!result.success) {
-        const errors = result.error.errors.map(err => {
+        // Zod v3 exposes `errors`, while Zod v4 exposes `issues`.  Reading
+        // only the former caused the error formatter itself to throw on v4,
+        // replacing the useful field-level response with a generic
+        // "Validation error".  Always preserve the original paths so clients
+        // can attach an error to the input that needs attention.
+        const issues = result.error.issues || result.error.errors || [];
+        const errors = issues.map(err => {
           const path = err.path.join('.');
           return {
             field: path,

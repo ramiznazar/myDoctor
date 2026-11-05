@@ -376,20 +376,27 @@ const main = async () => {
       'both participants see identical scheduling information'
     );
 
-    const patientCall = expectOk(await api('/video/start', { method: 'POST', token: patientToken, body: { appointmentId: appointment._id } }), 'patient starts a video call');
-    assert.equal(patientCall.session.status, 'RINGING');
-    const doctorIncoming = expectOk(await api('/video/incoming', { token: doctorToken }), 'doctor incoming-call poll');
-    assert.equal(doctorIncoming.sessions.some((session) => session._id === patientCall.sessionId), true, 'doctor receives ringing notification');
-    const accepted = expectOk(await api('/video/accept', { method: 'POST', token: doctorToken, body: { sessionId: patientCall.sessionId } }), 'doctor accepts call');
-    assert.equal(accepted.session.status, 'ACTIVE');
-    const ended = expectOk(await api('/video/end', { method: 'POST', token: doctorToken, body: { sessionId: patientCall.sessionId } }), 'doctor ends call');
-    assert.equal(ended.status, 'ENDED');
+    // Stream is an external service. Keep its end-to-end assertions available
+    // for a configured environment, while allowing the local API workflow to
+    // cover every database-backed flow when outbound network access is blocked.
+    if (process.env.SKIP_VIDEO_E2E !== 'true') {
+      const patientCall = expectOk(await api('/video/start', { method: 'POST', token: patientToken, body: { appointmentId: appointment._id } }), 'patient starts a video call');
+      assert.equal(patientCall.session.status, 'RINGING');
+      const doctorIncoming = expectOk(await api('/video/incoming', { token: doctorToken }), 'doctor incoming-call poll');
+      assert.equal(doctorIncoming.sessions.some((session) => session._id === patientCall.sessionId), true, 'doctor receives ringing notification');
+      const accepted = expectOk(await api('/video/accept', { method: 'POST', token: doctorToken, body: { sessionId: patientCall.sessionId } }), 'doctor accepts call');
+      assert.equal(accepted.session.status, 'ACTIVE');
+      const ended = expectOk(await api('/video/end', { method: 'POST', token: doctorToken, body: { sessionId: patientCall.sessionId } }), 'doctor ends call');
+      assert.equal(ended.status, 'ENDED');
 
-    const doctorCall = expectOk(await api('/video/start', { method: 'POST', token: doctorToken, body: { appointmentId: appointment._id } }), 'doctor starts a video call');
-    const patientIncoming = expectOk(await api('/video/incoming', { token: patientToken }), 'patient incoming-call poll');
-    assert.equal(patientIncoming.sessions.some((session) => session._id === doctorCall.sessionId), true, 'patient receives ringing notification');
-    const declined = expectOk(await api('/video/end', { method: 'POST', token: patientToken, body: { sessionId: doctorCall.sessionId } }), 'patient declines call');
-    assert.equal(declined.status, 'DECLINED');
+      const doctorCall = expectOk(await api('/video/start', { method: 'POST', token: doctorToken, body: { appointmentId: appointment._id } }), 'doctor starts a video call');
+      const patientIncoming = expectOk(await api('/video/incoming', { token: patientToken }), 'patient incoming-call poll');
+      assert.equal(patientIncoming.sessions.some((session) => session._id === doctorCall.sessionId), true, 'patient receives ringing notification');
+      const declined = expectOk(await api('/video/end', { method: 'POST', token: patientToken, body: { sessionId: doctorCall.sessionId } }), 'patient declines call');
+      assert.equal(declined.status, 'DECLINED');
+    } else {
+      console.log('Skipping Stream video E2E because SKIP_VIDEO_E2E=true');
+    }
 
     const firstConversation = expectOk(await api('/chat/conversation', {
       method: 'POST', token: patientToken,
@@ -447,9 +454,9 @@ const main = async () => {
     );
 
     // A UTC device zone is intentionally different from the server's local
-    // zone. The worker must calculate the reminder from the stored zone and
-    // send it once to each participant.
-    const reminderStart = new Date(Date.now() + 10 * 60 * 1000);
+    // zone. The worker must calculate the 15-minute reminder from the stored
+    // zone and send it once to each participant.
+    const reminderStart = new Date(Date.now() + 15 * 60 * 1000);
     const reminderAppointment = await Appointment.create({
       doctorId: doctor._id,
       patientId: patient._id,
@@ -471,7 +478,7 @@ const main = async () => {
     assert.equal(
       await Notification.countDocuments({
         'data.appointmentId': String(reminderAppointment._id),
-        'data.action': 'APPOINTMENT_REMINDER_10_MIN',
+      'data.action': 'APPOINTMENT_REMINDER_15_MIN',
       }),
       2,
       'the reminder is persisted once per participant'

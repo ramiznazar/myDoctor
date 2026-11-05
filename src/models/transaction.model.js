@@ -46,6 +46,13 @@ const transactionSchema = new mongoose.Schema({
   providerReference: {
     type: String,
     default: null
+  },
+  // Business services attach context such as appointment/order IDs and
+  // balance-credit provenance.  Keeping it in the schema is essential for
+  // idempotency checks and for meaningful transaction notifications.
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   }
 }, {
   timestamps: true

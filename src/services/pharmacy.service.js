@@ -2,6 +2,8 @@ const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const subscriptionPolicy = require('./subscriptionPolicy.service');
+const emailService = require('./email.service');
+const env = require('../config/env');
 
 /**
  * Create pharmacy
@@ -384,8 +386,9 @@ const buySubscriptionPlan = async (pharmacyUserId, planId) => {
   await pharmacyUser.save();
 
   const Transaction = require('../models/transaction.model');
+  let subscriptionTransaction = null;
   try {
-    await Transaction.create({
+    subscriptionTransaction = await Transaction.create({
       userId: pharmacyUserId,
       relatedSubscriptionId: planId,
       amount: plan.price,
@@ -399,6 +402,21 @@ const buySubscriptionPlan = async (pharmacyUserId, planId) => {
   }
 
   await pharmacyUser.populate('subscriptionPlan', 'name price durationInDays features status targetRole');
+
+  await emailService.sendSubscriptionPurchaseEmail({
+    user: pharmacyUser,
+    plan: pharmacyUser.subscriptionPlan,
+    expiresAt: pharmacyUser.subscriptionExpiresAt,
+    role: 'PHARMACY',
+  }).catch((error) => console.error('[email] pharmacy subscription email queue failed:', error.message));
+  if (subscriptionTransaction) {
+    await emailService.sendPaymentConfirmationEmail({
+      recipient: pharmacyUser,
+      transaction: subscriptionTransaction,
+      role: 'PHARMACY',
+      context: { kind: 'PHARMACY_SUBSCRIPTION', label: `Abbonamento ${pharmacyUser.subscriptionPlan?.name || ''}`, message: 'Il pagamento del tuo abbonamento è stato registrato correttamente.', url: `${env.APP_URL}/pharmacy/subscription` },
+    }).catch((error) => console.error('[email] pharmacy subscription payment queue failed:', error.message));
+  }
 
   const userObj = pharmacyUser.toObject();
   delete userObj.password;

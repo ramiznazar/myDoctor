@@ -4,6 +4,7 @@ const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
 const notificationService = require('./notification.service');
+const emailService = require('./email.service');
 const {
   DELIVERY_DAY_OPTIONS,
   DELIVERY_STATUS,
@@ -211,12 +212,21 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
     });
 
     createdOrders.push(order);
+    // The email receipt must use the product names actually saved in this
+    // order rather than a later storefront lookup.
+    await order.populate('items.productId', 'name');
     await notify(
       pharmacyData.ownerId,
       'New order received',
       `A new order (${order.orderNumber}) is waiting for its shipping fee and delivery commitment.`,
       { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'ORDER_CREATED' }
     );
+
+    const seller = await User.findById(pharmacyData.ownerId).select('fullName email role');
+    await Promise.all([
+      emailService.sendOrderConfirmationEmail({ order, patient, seller }),
+      emailService.sendNewOrderEmail({ order, patient, seller }),
+    ]).catch((error) => console.error('[email] order creation email queue failed:', error.message));
   }
 
   return createdOrders.length === 1 ? createdOrders[0] : { orders: createdOrders };
@@ -551,6 +561,13 @@ const updateShippingFee = async (orderId, shippingFee, deliveryDays, userId, use
     { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'SHIPPING_UPDATED' }
   );
 
+  const [patient, seller] = await Promise.all([
+    User.findById(order.patientId).select('fullName email role'),
+    User.findById(order.ownerId).select('fullName email role'),
+  ]);
+  await emailService.sendShippingFeeSetEmail({ order, patient, seller })
+    .catch((error) => console.error('[email] shipping email queue failed:', error.message));
+
   return order;
 };
 
@@ -692,6 +709,22 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
     `Order ${order.orderNumber} has been paid and is ready to process.`,
     { orderId: order._id.toString(), orderNumber: order.orderNumber, event: 'ORDER_PAID' }
   );
+
+  const patient = await User.findById(order.patientId).select('fullName email role');
+  await Promise.all([
+    emailService.sendPaymentConfirmationEmail({
+      recipient: patient,
+      transaction,
+      role: 'PATIENT',
+      context: { kind: 'ORDER_PAYMENT', label: `Ordine ${order.orderNumber}`, message: 'Il pagamento del tuo ordine è stato ricevuto correttamente.', url: `${require('../config/env').APP_URL}/patient/orders` },
+    }),
+    emailService.sendPaymentConfirmationEmail({
+      recipient: order.ownerId,
+      transaction,
+      role: order.ownerId?.role,
+      context: { kind: 'ORDER_RECEIVED', label: `Ordine ${order.orderNumber}`, message: 'Hai ricevuto il pagamento per un ordine. Puoi procedere con l’elaborazione.', url: `${require('../config/env').APP_URL}/pharmacy/orders` },
+    }),
+  ]).catch((error) => console.error('[email] order payment email queue failed:', error.message));
 
   return order;
 };

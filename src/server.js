@@ -2,6 +2,7 @@ const app = require("./app");
 const connectDB = require("./config/database");
 const config = require("./config/env");
 const { runAppointmentNotifications } = require("./workers/appointmentNotification.worker");
+const { runEmailNotifications } = require("./workers/emailNotification.worker");
 
 const PORT = config.PORT || 5000;
 
@@ -17,13 +18,18 @@ const PORT = config.PORT || 5000;
     // Start appointment notification worker (runs every minute)
     setInterval(async () => {
       try {
-        await runAppointmentNotifications();
+        await Promise.all([runAppointmentNotifications(), runEmailNotifications()]);
       } catch (error) {
-        console.error("Error in appointment notification worker:", error);
+        console.error("Error in notification worker:", error);
       }
     }, 60 * 1000); // Run every minute
 
-    console.log("✅ Appointment notification worker started (runs every minute)");
+    // Do not wait a minute after a restart before retrying queued emails or
+    // catching an appointment/subscription reminder that is already due.
+    Promise.all([runAppointmentNotifications(), runEmailNotifications()])
+      .catch((error) => console.error("Initial notification worker failed:", error));
+
+    console.log("✅ Appointment and email notification workers started (run every minute)");
   } catch (error) {
     console.error("Server start failed:", error.message);
     process.exit(1);

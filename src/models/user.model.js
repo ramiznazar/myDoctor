@@ -26,6 +26,21 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // New patient registrations are deliberately kept separate from existing
+  // accounts until their email address is verified. Existing users retain
+  // their current access because emailVerificationRequired defaults to false.
+  isEmailVerified: {
+    type: Boolean,
+    default: false
+  },
+  emailVerificationRequired: {
+    type: Boolean,
+    default: false
+  },
+  welcomeEmailSentAt: {
+    type: Date,
+    default: null
+  },
   password: {
     type: String,
     select: false,
@@ -89,6 +104,14 @@ const userSchema = new mongoose.Schema({
     default: null
   },
   subscriptionExpiresAt: {
+    type: Date,
+    default: null
+  },
+  subscriptionReminderSentFor: {
+    type: Date,
+    default: null
+  },
+  subscriptionExpirationEmailSentFor: {
     type: Date,
     default: null
   },

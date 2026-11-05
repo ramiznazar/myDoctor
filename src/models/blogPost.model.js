@@ -15,6 +15,13 @@ const blogPostSchema = new mongoose.Schema({
       type: Map,
       of: String,
       default: undefined
+    },
+    // Tags are visible in the public browse and details views too, so they
+    // must be authored per language just like the title and article body.
+    tags: {
+      type: Map,
+      of: [String],
+      default: undefined
     }
   },
   slug: {

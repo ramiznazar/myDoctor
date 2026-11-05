@@ -49,8 +49,27 @@ const adminApprovePharmacyValidator = z.object({
  */
 const changePasswordValidator = z.object({
   body: z.object({
-    oldPassword: z.string().min(1, "Old password is required"),
-    newPassword: z.string().min(6, "New password must be at least 6 characters")
+    code: z.string().length(6, "Verification code must be 6 digits").regex(/^\d+$/, "Verification code must contain only digits"),
+    newPassword: z.string().min(8, "New password must be at least 8 characters")
+  })
+});
+
+const verificationEmailValidator = z.object({
+  body: z.object({
+    email: z.string().email("Invalid email format")
+  })
+});
+
+const verifyEmailValidator = z.object({
+  body: z.object({
+    email: z.string().email("Invalid email format"),
+    code: z.string().length(6, "Verification code must be 6 digits").regex(/^\d+$/, "Verification code must contain only digits")
+  })
+});
+
+const changePasswordCodeValidator = z.object({
+  body: z.object({
+    code: z.string().length(6, "Verification code must be 6 digits").regex(/^\d+$/, "Verification code must contain only digits")
   })
 });
 
@@ -89,7 +108,7 @@ const resetPasswordValidator = z.object({
   body: z.object({
     email: z.string().email("Invalid email format"),
     code: z.string().length(6, "Verification code must be 6 digits").regex(/^\d+$/, "Verification code must contain only digits"),
-    newPassword: z.string().min(6, "New password must be at least 6 characters")
+    newPassword: z.string().min(8, "New password must be at least 8 characters")
   })
 });
 
@@ -112,6 +131,9 @@ module.exports = {
   adminApproveDoctorValidator,
   adminApprovePharmacyValidator,
   changePasswordValidator,
+  verificationEmailValidator,
+  verifyEmailValidator,
+  changePasswordCodeValidator,
   refreshTokenValidator,
   requestPasswordResetValidator,
   verifyPasswordResetCodeValidator,

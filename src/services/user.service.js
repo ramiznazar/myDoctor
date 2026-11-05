@@ -1,4 +1,5 @@
 const User = require('../models/user.model');
+const { sendApprovalEmail } = require('./email.service');
 
 /**
  * Get user by ID
@@ -81,8 +82,16 @@ const updateStatus = async (userId, status) => {
     throw new Error('Invalid status');
   }
 
+  const wasApproved = String(user.status || '').toUpperCase() === 'APPROVED';
   user.status = status;
   await user.save();
+
+  // The admin application changes account status through this generic route.
+  // Notify only on the actual transition so repeated saves do not generate
+  // duplicate approval emails.
+  if (!wasApproved && status === 'APPROVED' && ['DOCTOR', 'PHARMACY', 'PARAPHARMACY'].includes(user.role)) {
+    await sendApprovalEmail({ user, role: user.role });
+  }
 
   const userObj = user.toObject();
   delete userObj.password;

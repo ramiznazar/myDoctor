@@ -6,6 +6,8 @@ const Specialization = require('../models/specialization.model');
 const InsuranceCompany = require('../models/insuranceCompany.model');
 const Product = require('../models/product.model');
 const subscriptionPolicy = require('./subscriptionPolicy.service');
+const emailService = require('./email.service');
+const env = require('../config/env');
 
 /**
  * Upsert doctor profile (create or update)
@@ -419,8 +421,9 @@ const buySubscriptionPlan = async (doctorId, planId) => {
 
   // Create transaction record for subscription purchase
   const Transaction = require('../models/transaction.model');
+  let subscriptionTransaction = null;
   try {
-    await Transaction.create({
+    subscriptionTransaction = await Transaction.create({
       userId: doctorId,
       relatedSubscriptionId: planId,
       amount: plan.price,
@@ -436,6 +439,21 @@ const buySubscriptionPlan = async (doctorId, planId) => {
 
   // Populate plan details
   await doctor.populate('subscriptionPlan', 'name price durationInDays features status');
+
+  await emailService.sendSubscriptionPurchaseEmail({
+    user: doctor,
+    plan: doctor.subscriptionPlan,
+    expiresAt: doctor.subscriptionExpiresAt,
+    role: 'DOCTOR',
+  }).catch((error) => console.error('[email] doctor subscription email queue failed:', error.message));
+  if (subscriptionTransaction) {
+    await emailService.sendPaymentConfirmationEmail({
+      recipient: doctor,
+      transaction: subscriptionTransaction,
+      role: 'DOCTOR',
+      context: { kind: 'DOCTOR_SUBSCRIPTION', label: `Abbonamento ${doctor.subscriptionPlan?.name || ''}`, message: 'Il pagamento del tuo abbonamento è stato registrato correttamente.', url: `${env.APP_URL}/doctor/subscription-plans` },
+    }).catch((error) => console.error('[email] doctor subscription payment queue failed:', error.message));
+  }
   
   const doctorObj = doctor.toObject();
   delete doctorObj.password;

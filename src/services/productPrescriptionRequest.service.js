@@ -4,6 +4,7 @@ const Pharmacy = require('../models/pharmacy.model');
 const User = require('../models/user.model');
 const Notification = require('../models/notification.model');
 const notificationService = require('./notification.service');
+const emailService = require('./email.service');
 
 const httpError = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
@@ -86,6 +87,12 @@ const submitRequest = async (patientId, data) => {
     'PRESCRIPTION_REQUEST',
     { action: 'PRODUCT_PRESCRIPTION_REQUEST', prescriptionRequestId: String(request._id), productId: String(product._id) }
   );
+  const [patientForEmail, sellerForEmail] = await Promise.all([
+    User.findById(patientId).select('fullName email role'),
+    User.findById(pharmacy.ownerId).select('fullName email role'),
+  ]);
+  await emailService.sendPrescriptionReceivedEmail({ request, product, patient: patientForEmail, seller: sellerForEmail })
+    .catch((error) => console.error('[email] prescription received email queue failed:', error.message));
   return request.toObject();
 };
 
@@ -169,6 +176,12 @@ const reviewRequest = async (ownerId, requestId, data) => {
       { action: 'PRODUCT_PRESCRIPTION_REJECTED', prescriptionRequestId: String(request._id), productId: String(request.productId), variantId: request.variantId ? String(request.variantId) : null }
     );
   }
+  const [patientForEmail, sellerForEmail] = await Promise.all([
+    User.findById(request.patientId).select('fullName email role'),
+    User.findById(ownerId).select('fullName email role'),
+  ]);
+  await emailService.sendPrescriptionStatusEmail({ request, product, patient: patientForEmail, seller: sellerForEmail })
+    .catch((error) => console.error('[email] prescription status email queue failed:', error.message));
   return request.toObject();
 };
 

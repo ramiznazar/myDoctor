@@ -6,7 +6,17 @@ const authService = require('../services/auth.service');
  */
 exports.register = asyncHandler(async (req, res) => {
   const result = await authService.registerUser(req.body);
-  res.json({ success: true, message: 'OK', data: result });
+  res.json({ success: true, message: result.requiresEmailVerification ? 'Verification code sent to your email address' : 'OK', data: result });
+});
+
+exports.verifyEmail = asyncHandler(async (req, res) => {
+  const result = await authService.verifyEmail(req.body.email, req.body.code);
+  res.json({ success: true, message: 'Email verified successfully', data: result });
+});
+
+exports.resendEmailVerification = asyncHandler(async (req, res) => {
+  await authService.resendEmailVerification(req.body.email);
+  res.json({ success: true, message: 'If this account is awaiting verification, a new code has been sent.' });
 });
 
 /**
@@ -45,9 +55,19 @@ exports.approvePharmacy = asyncHandler(async (req, res) => {
  * Change password
  */
 exports.changePassword = asyncHandler(async (req, res) => {
-  const { oldPassword, newPassword } = req.body;
-  const result = await authService.changePassword(req.userId, oldPassword, newPassword);
+  const { newPassword, code } = req.body;
+  const result = await authService.changePassword(req.userId, newPassword, code);
   res.json({ success: true, message: 'OK', data: result });
+});
+
+exports.requestChangePasswordCode = asyncHandler(async (req, res) => {
+  await authService.requestChangePasswordCode(req.userId);
+  res.json({ success: true, message: 'Verification code sent to your registered email address.' });
+});
+
+exports.verifyChangePasswordCode = asyncHandler(async (req, res) => {
+  const result = await authService.verifyChangePasswordCode(req.userId, req.body.code);
+  res.json({ success: true, message: 'Verification code confirmed.', data: result });
 });
 
 /**

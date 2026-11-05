@@ -1,6 +1,7 @@
 const Appointment = require('../models/appointment.model');
 const Notification = require('../models/notification.model');
 const notificationService = require('./notification.service');
+const { sendAppointmentReminderEmails } = require('./email.service');
 const { computeAppointmentWindow } = require('../utils/appointmentTime');
 
 const userName = (user, fallback) => user?.fullName || user?.name || user?.email || fallback;
@@ -53,30 +54,35 @@ const sendUpcomingAppointmentNotifications = async () => {
       const { start } = computeAppointmentWindow(appointment);
       const minutesUntilStart = (start.getTime() - now.getTime()) / 60000;
       // The worker runs every minute. A narrow two-minute window makes the
-      // ten-minute reminder reliable without sending it more than once.
-      if (minutesUntilStart < 8.5 || minutesUntilStart > 10.5) continue;
+      // required fifteen-minute reminder reliable without duplicating it.
+      if (minutesUntilStart < 13.5 || minutesUntilStart > 15.5) continue;
 
       const doctorName = userName(appointment.doctorId, 'your doctor');
       const patientName = userName(appointment.patientId, 'your patient');
-      const data = { appointmentTime: appointment.appointmentTime, minutesBefore: 10 };
+      const data = { appointmentTime: appointment.appointmentTime, minutesBefore: 15 };
       const created = await Promise.all([
         sendOnce({
           userId: appointment.doctorId?._id,
           appointmentId: appointment._id,
-          action: 'APPOINTMENT_REMINDER_10_MIN',
-          title: 'Appointment starts in 10 minutes',
+          action: 'APPOINTMENT_REMINDER_15_MIN',
+          title: 'Appointment starts in 15 minutes',
           body: `Your appointment with ${patientName} starts at ${appointment.appointmentTime}.`,
           data,
         }),
         sendOnce({
           userId: appointment.patientId?._id,
           appointmentId: appointment._id,
-          action: 'APPOINTMENT_REMINDER_10_MIN',
-          title: 'Appointment starts in 10 minutes',
+          action: 'APPOINTMENT_REMINDER_15_MIN',
+          title: 'Appointment starts in 15 minutes',
           body: `Your appointment with Dr. ${doctorName} starts at ${appointment.appointmentTime}.`,
           data,
         }),
       ]);
+      await sendAppointmentReminderEmails({
+        appointment,
+        doctor: appointment.doctorId,
+        patient: appointment.patientId,
+      }).catch((error) => console.error('[email] appointment reminder queue failed:', error.message));
       sent += created.filter(Boolean).length;
     } catch (error) {
       console.error('Appointment reminder failed:', appointment?._id, error);

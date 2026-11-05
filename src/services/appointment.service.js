@@ -5,6 +5,7 @@ const WeeklySchedule = require('../models/weeklySchedule.model');
 const { buildBookableSlots } = require('./weeklySchedule.service');
 const balanceService = require('./balance.service');
 const subscriptionPolicy = require('./subscriptionPolicy.service');
+const emailService = require('./email.service');
 const {
   isIanaTimeZone,
   getTimeZoneOffsetMinutes,
@@ -353,6 +354,11 @@ const createAppointment = async (data) => {
     console.error('Failed to create appointment notifications:', notificationError);
   }
 
+  // Delivery is queued after the appointment is committed. Email outages must
+  // never make a successfully booked slot look unavailable to the patient.
+  await emailService.sendAppointmentBookedEmails({ appointment, patient, doctor })
+    .catch((error) => console.error('[email] appointment booking email queue failed:', error.message));
+
   return appointment;
 };
 
@@ -477,6 +483,14 @@ const updateAppointmentStatus = async (id, statusData, actor = null) => {
       type: 'APPOINTMENT',
       data: { appointmentId: appointment._id },
     });
+
+    await emailService.sendAppointmentStatusEmail({
+      appointment,
+      patient: appointment.patientId,
+      doctor: appointment.doctorId,
+      status,
+      reason: notes,
+    }).catch((error) => console.error('[email] appointment status email queue failed:', error.message));
   }
 
   return appointment;
@@ -504,7 +518,7 @@ const acceptAppointment = async (appointmentId, doctorId) => {
   await appointment.save();
 
   const notificationService = require('./notification.service');
-  const doctor = await User.findById(doctorId);
+  const [doctor, patient] = await Promise.all([User.findById(doctorId), User.findById(appointment.patientId)]);
 
   await notificationService.createNotification({
     userId: appointment.patientId.toString(),
@@ -517,6 +531,9 @@ const acceptAppointment = async (appointmentId, doctorId) => {
     type: 'APPOINTMENT',
     data: { appointmentId: appointment._id },
   });
+
+  await emailService.sendAppointmentStatusEmail({ appointment, patient, doctor, status: 'CONFIRMED' })
+    .catch((error) => console.error('[email] appointment confirmation email queue failed:', error.message));
 
   return appointment;
 };
@@ -547,7 +564,7 @@ const rejectAppointment = async (appointmentId, doctorId, reason = null) => {
   await appointment.save();
 
   const notificationService = require('./notification.service');
-  const doctor = await User.findById(doctorId);
+  const [doctor, patient] = await Promise.all([User.findById(doctorId), User.findById(appointment.patientId)]);
 
   await notificationService.createNotification({
     userId: appointment.patientId.toString(),
@@ -560,6 +577,9 @@ const rejectAppointment = async (appointmentId, doctorId, reason = null) => {
     type: 'APPOINTMENT',
     data: { appointmentId: appointment._id },
   });
+
+  await emailService.sendAppointmentStatusEmail({ appointment, patient, doctor, status: 'REJECTED', reason })
+    .catch((error) => console.error('[email] appointment rejection email queue failed:', error.message));
 
   return appointment;
 };

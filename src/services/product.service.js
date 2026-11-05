@@ -15,6 +15,17 @@ const nullableText = (value) => {
   return text || null;
 };
 
+// Product options are validated a second time in the service because prices
+// and inventory are business-critical values.  Unlike a bare Error, this
+// shape survives the global error middleware and lets the web form point to
+// the exact option field that needs to be corrected.
+const productValidationError = (field, message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  error.errors = [{ field, message }];
+  return error;
+};
+
 const normalizeVariants = (variants, fallback = {}) => {
   const source = Array.isArray(variants) && variants.length
     ? variants
@@ -31,12 +42,14 @@ const normalizeVariants = (variants, fallback = {}) => {
     const price = nullableNumber(variant?.price);
     const discountPrice = nullableNumber(variant?.discountPrice);
     const stock = nullableNumber(variant?.stock);
-    if (price === null || price < 0) throw new Error(`A valid price is required for variant ${index + 1}`);
+    if (price === null || price < 0) {
+      throw productValidationError(`variants.${index}.price`, `Enter a valid regular price for option ${index + 1}`);
+    }
     if (stock === null || stock < 0 || !Number.isInteger(stock)) {
-      throw new Error(`A whole stock quantity is required for variant ${index + 1}`);
+      throw productValidationError(`variants.${index}.stock`, `Enter a whole stock quantity for option ${index + 1}`);
     }
     if (discountPrice !== null && (discountPrice < 0 || discountPrice >= price)) {
-      throw new Error(`Sale price must be lower than regular price for variant ${index + 1}`);
+      throw productValidationError(`variants.${index}.discountPrice`, `The sale price must be lower than the regular price for option ${index + 1}`);
     }
     return {
       ...(variant?._id ? { _id: variant._id } : {}),
@@ -135,6 +148,9 @@ const createProduct = async (data) => {
   const productType = ['PHARMACY_MEDICINE', 'PARAPHARMACY_PRODUCT', 'GENERAL_PRODUCT'].includes(data.productType)
     ? data.productType : defaultType;
   const normalized = normaliseProductData(data);
+  if (productType === 'PHARMACY_MEDICINE' && !nullableText(normalized.medicineDetails?.activeIngredients)) {
+    throw productValidationError('medicineDetails.activeIngredients', 'Active ingredients are required for a medicine');
+  }
   return Product.create({
     ...normalized,
     sellerId: data.sellerId,
@@ -143,6 +159,7 @@ const createProduct = async (data) => {
     description: nullableText(data.description),
     category: nullableText(data.category),
     subCategory: nullableText(data.subCategory),
+    i18n: data.i18n,
     productType,
     requiresPrescription: Boolean(data.requiresPrescription),
     isActive: data.isActive !== false,
@@ -196,26 +213,57 @@ const getProduct = async (id, options = {}) => {
 
 const listProducts = async (filter = {}, options = {}) => {
   const { sellerId, sellerType, category, subCategory, minPrice, maxPrice, tags, search, isActive, page = 1, limit = 10 } = filter;
+  const lang = normalizeLang(options.lang);
+  const baseLang = lang ? lang.split('-')[0] : null;
   const query = { sellerType: { $ne: 'DOCTOR' } };
+  const localizedFilters = [];
+  const localizedFieldFilter = (field, value) => {
+    const conditions = [{ [field]: value }];
+    [...new Set([lang, baseLang].filter(Boolean))].forEach((key) => {
+      conditions.push({ [`i18n.${field}.${key}`]: value });
+    });
+    return { $or: conditions };
+  };
+
   if (String(isActive || '').toLowerCase() !== 'all') query.isActive = isActive === undefined || String(isActive).toLowerCase() === 'true';
   if (sellerId) query.sellerId = sellerId;
   if (sellerType && String(sellerType).toUpperCase() !== 'DOCTOR') query.sellerType = String(sellerType).toUpperCase();
-  if (category) query.category = category;
-  if (subCategory) query.subCategory = subCategory;
+  if (category) localizedFilters.push(localizedFieldFilter('category', category));
+  if (subCategory) localizedFilters.push(localizedFieldFilter('subCategory', subCategory));
   if (minPrice || maxPrice) {
     query.price = {};
     if (minPrice) query.price.$gte = Number(minPrice);
     if (maxPrice) query.price.$lte = Number(maxPrice);
   }
-  if (tags?.length) query.tags = { $in: Array.isArray(tags) ? tags : [tags] };
-  if (search) query.$or = [{ name: { $regex: search, $options: 'i' } }, { description: { $regex: search, $options: 'i' } }, { brand: { $regex: search, $options: 'i' } }];
+  if (tags?.length) {
+    const tagsArray = Array.isArray(tags) ? tags : [tags];
+    const tagConditions = [{ tags: { $in: tagsArray } }];
+    [...new Set([lang, baseLang].filter(Boolean))].forEach((key) => {
+      tagConditions.push({ [`i18n.tags.${key}`]: { $in: tagsArray } });
+    });
+    localizedFilters.push({ $or: tagConditions });
+  }
+  if (search) {
+    const searchConditions = [
+      { name: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } },
+      { brand: { $regex: search, $options: 'i' } },
+    ];
+    [...new Set([lang, baseLang].filter(Boolean))].forEach((key) => {
+      searchConditions.push({ [`i18n.name.${key}`]: { $regex: search, $options: 'i' } });
+      searchConditions.push({ [`i18n.description.${key}`]: { $regex: search, $options: 'i' } });
+      searchConditions.push({ [`i18n.category.${key}`]: { $regex: search, $options: 'i' } });
+      searchConditions.push({ [`i18n.subCategory.${key}`]: { $regex: search, $options: 'i' } });
+    });
+    localizedFilters.push({ $or: searchConditions });
+  }
+  if (localizedFilters.length > 0) query.$and = localizedFilters;
   const normalizedPage = Math.max(1, Number(page) || 1);
   const normalizedLimit = Math.min(100, Math.max(1, Number(limit) || 10));
   const [products, total] = await Promise.all([
     Product.find(query).populate('sellerId', 'fullName email phone profileImage').skip((normalizedPage - 1) * normalizedLimit).limit(normalizedLimit).sort({ createdAt: -1 }),
     Product.countDocuments(query),
   ]);
-  const lang = normalizeLang(options.lang);
   const localized = lang ? products.map((product) => localizeProduct(product, lang)) : products;
   return {
     products: localized,
