@@ -12,15 +12,84 @@ const env = require('../config/env');
 const EmailNotification = require('../models/emailNotification.model');
 
 let transporter = null;
+let lastConfigurationErrorKey = '';
+
+const ARUBA_SMTP_HOSTS = new Set(['smtp.aruba.it', 'smtps.aruba.it']);
+const EMAIL_ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emailDomain = (address) => String(address || '').trim().toLowerCase().split('@')[1] || '';
+
+const inspectSmtpConfiguration = () => {
+  const errors = [];
+  const warnings = [];
+  const host = String(env.SMTP_HOST || '').trim().toLowerCase();
+  const from = String(env.SMTP_FROM || '').trim();
+  const envelopeFrom = String(env.SMTP_ENVELOPE_FROM || from).trim();
+  const replyTo = String(env.SMTP_REPLY_TO || from).trim();
+  const fromDomain = emailDomain(from);
+  const messageIdDomain = String(env.SMTP_MESSAGE_ID_DOMAIN || fromDomain).trim().toLowerCase();
+
+  if (!env.EMAIL_ENABLED) errors.push('EMAIL_DISABLED');
+  if (!host) errors.push('SMTP_HOST_MISSING');
+  if (env.EMAIL_PROVIDER === 'aruba' && host && !ARUBA_SMTP_HOSTS.has(host)) errors.push('SMTP_HOST_NOT_ARUBA');
+  if (!Number.isInteger(Number(env.SMTP_PORT)) || Number(env.SMTP_PORT) < 1 || Number(env.SMTP_PORT) > 65535) errors.push('SMTP_PORT_INVALID');
+  if (Number(env.SMTP_PORT) === 465 && !env.SMTP_SECURE) errors.push('SMTP_465_REQUIRES_SECURE');
+  if (Number(env.SMTP_PORT) === 587 && env.SMTP_SECURE) errors.push('SMTP_587_REQUIRES_STARTTLS');
+  if (!env.SMTP_USER || !EMAIL_ADDRESS.test(String(env.SMTP_USER).trim())) errors.push('SMTP_USER_MISSING_OR_INVALID');
+  if (!env.SMTP_PASS) errors.push('SMTP_PASS_MISSING');
+  if (!from || !EMAIL_ADDRESS.test(from)) errors.push('SMTP_FROM_MISSING_OR_INVALID');
+  if (!envelopeFrom || !EMAIL_ADDRESS.test(envelopeFrom)) errors.push('SMTP_ENVELOPE_FROM_INVALID');
+  if (!replyTo || !EMAIL_ADDRESS.test(replyTo)) errors.push('SMTP_REPLY_TO_INVALID');
+  if (!messageIdDomain || !/^[a-z0-9.-]+$/i.test(messageIdDomain)) errors.push('SMTP_MESSAGE_ID_DOMAIN_INVALID');
+
+  if (fromDomain && envelopeFrom && emailDomain(envelopeFrom) !== fromDomain) errors.push('SMTP_ENVELOPE_FROM_DOMAIN_MISMATCH');
+  if (fromDomain && replyTo && emailDomain(replyTo) !== fromDomain) warnings.push('SMTP_REPLY_TO_DOMAIN_DIFFERS_FROM_FROM');
+  if (fromDomain && env.SMTP_USER && emailDomain(env.SMTP_USER) !== fromDomain) warnings.push('SMTP_USER_DOMAIN_DIFFERS_FROM_FROM');
+  if (fromDomain && messageIdDomain && messageIdDomain !== fromDomain) warnings.push('SMTP_MESSAGE_ID_DOMAIN_DIFFERS_FROM_FROM');
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+    provider: env.EMAIL_PROVIDER,
+    host,
+    port: Number(env.SMTP_PORT),
+    secure: Boolean(env.SMTP_SECURE),
+    requireTLS: Boolean(env.SMTP_REQUIRE_TLS),
+    from,
+    envelopeFrom,
+    replyTo,
+    messageIdDomain,
+  };
+};
+
+const logConfigurationErrors = (configuration) => {
+  if (configuration.valid || lastConfigurationErrorKey === configuration.errors.join('|')) return;
+  lastConfigurationErrorKey = configuration.errors.join('|');
+  console.error('[email] SMTP configuration is unsafe; delivery is disabled until corrected', {
+    provider: configuration.provider,
+    host: configuration.host || null,
+    port: configuration.port || null,
+    errors: configuration.errors,
+    warnings: configuration.warnings,
+  });
+};
 
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 
+// Include actionable URLs in the text alternative, rather than stripping them
+// with the HTML tags. Avoid leaking styles, hidden preview text, or CSS into it.
 const plainText = (html) => String(html || '')
-  .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]*>/g, '')
-  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-  .replace(/&gt;/g, '>').replace(/&#039;/g, "'").replace(/\n{3,}/g, '\n\n').trim();
+  .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, '')
+  .replace(/<span\b[^>]*style="[^"]*display\s*:\s*none[^\"]*"[^>]*>[\s\S]*?<\/span>/gi, '')
+  .replace(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
+  .replace(/<br\s*\/?>|<\/(?:p|tr|h[1-6]|div|li)>/gi, '\n')
+  .replace(/<\/td>/gi, '  ').replace(/<[^>]*>/g, '')
+  .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+  .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#0*39;/gi, "'")
+  .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+  .replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 
 const money = (value, currency = 'EUR') => new Intl.NumberFormat('it-IT', {
   style: 'currency', currency: currency || 'EUR',
@@ -57,10 +126,14 @@ const button = (url, label) => url ? `<p style="margin:28px 0 2px;text-align:cen
 
 const layout = ({ eyebrow = 'MY DOCTOR', title, preview, body }) => `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:#f2f7f9;font-family:Arial,Helvetica,sans-serif;color:#183449;"><span style="display:none!important;visibility:hidden;opacity:0;height:0;width:0;color:transparent;">${escapeHtml(preview || title)}</span><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f2f7f9;padding:30px 12px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 8px 28px rgba(22,69,88,.11);"><tr><td style="padding:27px 34px;background:linear-gradient(135deg,#0a3f58 0%,#087f94 55%,#22b6b7 100%);color:#fff;"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.18);text-align:center;vertical-align:middle;font-size:24px;font-weight:700;line-height:38px;">✚</td><td style="padding-left:11px;"><div style="font-size:19px;font-weight:700;letter-spacing:.2px;">mydoctor<span style="color:#88fff3;">+</span></div><div style="font-size:11px;letter-spacing:1.2px;font-weight:700;opacity:.84;margin-top:2px;">${escapeHtml(eyebrow)}</div></td></tr></table></td></tr><tr><td style="padding:34px 34px 30px;"><h1 style="font-size:25px;line-height:1.3;letter-spacing:-.35px;margin:0 0 17px;color:#153147;">${escapeHtml(title)}</h1>${body}</td></tr><tr><td style="padding:18px 34px;background:#f7fafb;border-top:1px solid #e5edf2;color:#6b7e8c;font-size:12px;line-height:1.65;">Questa è una comunicazione automatica di My Doctor. Per proteggere il tuo account, non condividere mai codici di verifica o credenziali.</td></tr></table></td></tr></table></body></html>`;
 
-const smtpConfigured = () => Boolean(env.EMAIL_ENABLED && env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
+const smtpConfigured = () => inspectSmtpConfiguration().valid;
 const getTransporter = () => {
   if (transporter) return transporter;
-  if (!smtpConfigured()) return null;
+  const configuration = inspectSmtpConfiguration();
+  if (!configuration.valid) {
+    logConfigurationErrors(configuration);
+    return null;
+  }
   transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: Number(env.SMTP_PORT || 587),
@@ -75,19 +148,63 @@ const getTransporter = () => {
   return transporter;
 };
 
-const sendEmail = async ({ to, subject, html, text, from }) => {
+const verifySmtpConnection = async () => {
+  const configuration = inspectSmtpConfiguration();
+  if (!configuration.valid) {
+    logConfigurationErrors(configuration);
+    return { verified: false, ...configuration };
+  }
+
+  try {
+    await getTransporter().verify();
+    console.info('[email] SMTP connection verified', {
+      provider: configuration.provider,
+      host: configuration.host,
+      port: configuration.port,
+      secure: configuration.secure,
+      requireTLS: configuration.requireTLS,
+      warnings: configuration.warnings,
+    });
+    return { verified: true, ...configuration };
+  } catch (error) {
+    console.error('[email] SMTP verification failed', {
+      provider: configuration.provider,
+      host: configuration.host,
+      port: configuration.port,
+      code: error?.code,
+      responseCode: error?.responseCode,
+      message: error?.message,
+    });
+    return { verified: false, ...configuration, error: error?.message || 'SMTP_VERIFICATION_FAILED' };
+  }
+};
+
+const sendEmail = async ({ to, subject, html, text }) => {
   if (!to || !subject) throw new Error('Recipient and subject are required');
   const mailer = getTransporter();
   if (!mailer) {
-    console.warn('[email] SMTP is not configured; email delivery was skipped', { subject, recipient: to });
-    return { skipped: true, reason: 'SMTP_NOT_CONFIGURED' };
+    const configuration = inspectSmtpConfiguration();
+    console.warn('[email] SMTP is not configured; email delivery was skipped', { subject, recipient: to, errors: configuration.errors });
+    return { skipped: true, reason: configuration.errors[0] || 'SMTP_NOT_CONFIGURED' };
   }
   try {
     const info = await mailer.sendMail({
-      from: from || { address: env.SMTP_FROM || env.SMTP_USER, name: env.SMTP_FROM_NAME || 'My Doctor' },
+      // Keep the visible From, SMTP envelope sender and Message-ID on the
+      // same controlled domain. This is essential for SPF/DKIM/DMARC alignment.
+      from: { address: env.SMTP_FROM, name: env.SMTP_FROM_NAME || 'My Doctor' },
       to, subject, text: text || plainText(html), html,
+      replyTo: env.SMTP_REPLY_TO || env.SMTP_FROM,
+      envelope: { from: env.SMTP_ENVELOPE_FROM || env.SMTP_FROM, to },
+      messageId: `<${crypto.randomUUID()}@${env.SMTP_MESSAGE_ID_DOMAIN || emailDomain(env.SMTP_FROM)}>`,
     });
-    console.info('[email] delivered', { subject, recipient: to, messageId: info.messageId });
+    console.info('[email] delivered', {
+      subject,
+      recipient: to,
+      messageId: info.messageId,
+      accepted: info.accepted || [],
+      rejected: info.rejected || [],
+      response: info.response,
+    });
     return { messageId: info.messageId, accepted: info.accepted || [] };
   } catch (error) {
     console.error('[email] SMTP delivery failed', { recipient: to, subject, code: error?.code, responseCode: error?.responseCode, message: error?.message });
@@ -157,7 +274,16 @@ const processPendingEmails = async (limit = 25) => {
     { $set: { status: 'FAILED', nextAttemptAt: now, lastError: 'Recovered a stale email delivery attempt' } },
   );
   const records = await EmailNotification.find({ status: { $in: ['PENDING', 'FAILED'] }, attempts: { $lt: 5 }, nextAttemptAt: { $lte: now } }).sort({ nextAttemptAt: 1 }).limit(Math.max(1, Math.min(100, Number(limit) || 25))).select('_id');
-  const results = await Promise.all(records.map((record) => processEmailNotification(record._id)));
+  // Avoid a restart or backlog producing a large simultaneous SMTP burst. A
+  // small bounded batch is friendlier to the receiving providers and preserves
+  // the outbox's retry guarantees.
+  const results = [];
+  const concurrency = Math.max(1, Number(env.EMAIL_MAX_CONCURRENCY) || 3);
+  for (let index = 0; index < records.length; index += concurrency) {
+    const batch = await Promise.all(records.slice(index, index + concurrency)
+      .map((record) => processEmailNotification(record._id)));
+    results.push(...batch);
+  }
   return { checked: records.length, sent: results.filter((result) => result.sent).length };
 };
 
@@ -256,4 +382,4 @@ const sendDoctorApprovalNotification = (doctor, status, message) => String(statu
 const sendIncompleteProfileNotification = (doctor, missing = []) => queueTemplate({ key: `profile-incomplete:${idOf(doctor)}:${missing.join('|')}`, type: 'PROFILE_INCOMPLETE', to: doctor?.email, subject: 'Completa il tuo profilo My Doctor', title: 'Completa il tuo profilo', preview: 'Alcune informazioni del profilo sono mancanti.', body: `<p style="font-size:16px;line-height:1.7;margin:0;">Ciao Dott. ${escapeHtml(nameOf(doctor))},</p><p style="font-size:15px;line-height:1.7;">Per completare il tuo profilo, aggiungi le seguenti informazioni:</p><ul style="font-size:15px;line-height:1.8;color:#425b68;">${missing.map((entry) => `<li>${escapeHtml(entry)}</li>`).join('')}</ul>${button(`${env.APP_URL}/doctor/profile-settings`, 'Completa il profilo')}` });
 const sendMissingDocumentsNotification = (doctor) => queueTemplate({ key: `documents-missing:${idOf(doctor)}`, type: 'MISSING_DOCUMENTS', to: doctor?.email, subject: 'Documenti richiesti · My Doctor', title: 'Carica i documenti richiesti', preview: 'Sono necessari documenti per completare la verifica.', body: `<p style="font-size:16px;line-height:1.7;margin:0;">Ciao Dott. ${escapeHtml(nameOf(doctor))},</p><p style="font-size:15px;line-height:1.7;">Carica i documenti richiesti per consentire al nostro team di completare la verifica del tuo account.</p>${button(`${env.APP_URL}/doctor-verification-upload`, 'Carica documenti')}` });
 
-module.exports = { sendEmail, queueEmail, processEmailNotification, processPendingEmails, sendEmailVerificationCodeEmail, sendPasswordVerificationCodeEmail, sendPasswordResetOTP, sendPasswordResetSuccess, sendWelcomeEmail, sendApprovalEmail, sendAppointmentBookedEmails, sendAppointmentStatusEmail, sendAppointmentReminderEmails, sendOrderConfirmationEmail, sendNewOrderEmail, sendShippingFeeSetEmail, sendPrescriptionReceivedEmail, sendPrescriptionStatusEmail, sendPaymentConfirmationEmail, sendBalanceChangeEmail, sendRefundEmail, sendWithdrawalStatusEmail, sendSubscriptionPurchaseEmail, sendSubscriptionExpiryReminder, sendContactQueryReceivedEmail, sendContactQueryStatusEmail, sendContactQueryResolutionEmail, sendDoctorApprovalNotification, sendIncompleteProfileNotification, sendMissingDocumentsNotification };
+module.exports = { inspectSmtpConfiguration, verifySmtpConnection, sendEmail, queueEmail, processEmailNotification, processPendingEmails, sendEmailVerificationCodeEmail, sendPasswordVerificationCodeEmail, sendPasswordResetOTP, sendPasswordResetSuccess, sendWelcomeEmail, sendApprovalEmail, sendAppointmentBookedEmails, sendAppointmentStatusEmail, sendAppointmentReminderEmails, sendOrderConfirmationEmail, sendNewOrderEmail, sendShippingFeeSetEmail, sendPrescriptionReceivedEmail, sendPrescriptionStatusEmail, sendPaymentConfirmationEmail, sendBalanceChangeEmail, sendRefundEmail, sendWithdrawalStatusEmail, sendSubscriptionPurchaseEmail, sendIncompleteProfileNotification, sendMissingDocumentsNotification };

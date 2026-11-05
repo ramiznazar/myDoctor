@@ -1,97 +1,111 @@
-# Email Setup Guide for Password Reset
+# My Doctor transactional email delivery
 
-The email service is now configured to send emails using nodemailer. You need to configure SMTP settings in your `.env` file.
+My Doctor sends password codes and transactional notifications through an Aruba
+mailbox on the `mydoctorplus.it` domain. Do not use a Gmail mailbox or a
+different visible sender in production: this breaks the identity alignment that
+receiving providers use to assess the message.
 
-## Required Environment Variables
+## Production environment
 
-Add these variables to your `myDoctor/.env` file:
+Create a dedicated, real Aruba domain mailbox, for example
+`noreply@mydoctorplus.it`, and use its full address and mailbox password. Keep
+the password only in the deployment secret store or `.env`; never commit it.
 
 ```env
-# SMTP Email Configuration
-SMTP_HOST=smtp.gmail.com
+EMAIL_ENABLED=true
+EMAIL_PROVIDER=aruba
+SMTP_HOST=smtps.aruba.it
 SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
+SMTP_SECURE=false
+SMTP_REQUIRE_TLS=true
+SMTP_USER=noreply@mydoctorplus.it
+SMTP_PASS=<Aruba mailbox password>
+SMTP_FROM=noreply@mydoctorplus.it
+SMTP_FROM_NAME=My Doctor
+SMTP_REPLY_TO=support@mydoctorplus.it
+SMTP_ENVELOPE_FROM=noreply@mydoctorplus.it
+SMTP_MESSAGE_ID_DOMAIN=mydoctorplus.it
+EMAIL_VERIFY_ON_STARTUP=true
+EMAIL_MAX_CONCURRENCY=3
+APP_URL=https://mydoctorweb.mydoctorplus.it
 ```
 
-## Gmail Setup (Recommended for Testing)
+`SMTP_USER`, `SMTP_FROM`, and `SMTP_ENVELOPE_FROM` should use the same domain.
+`SMTP_REPLY_TO` must be a monitored mailbox. Port 587 uses STARTTLS, so
+`SMTP_SECURE=false` and `SMTP_REQUIRE_TLS=true` are intentional. Aruba documents
+SMTP authentication with the full mailbox address and supports `smtps.aruba.it`
+for domain mailboxes; it also documents port 587 for SMTP submission.
 
-### Option 1: Gmail App Password (Recommended)
+The code rejects a non-Aruba host when `EMAIL_PROVIDER=aruba`, rejects an
+unconfigured visible sender, keeps the SMTP envelope sender aligned with the
+visible sender, and limits outbox delivery concurrency to prevent retry bursts.
+It retains every current template and trigger.
 
-1. Go to your Google Account settings: https://myaccount.google.com/
-2. Enable 2-Step Verification if not already enabled
-3. Go to "App passwords": https://myaccount.google.com/apppasswords
-4. Create a new app password for "Mail"
-5. Copy the 16-character password
-6. Use it as `SMTP_PASS` in your `.env` file
+## DNS changes required outside this repository
 
-**Example .env configuration for Gmail:**
-```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=abcd efgh ijkl mnop  # Your 16-character app password
+Application code cannot publish DNS authentication. At the time of the audit,
+public DNS did not return a TXT result for `mydoctorplus.it`,
+`_dmarc.mydoctorplus.it`, or `a1._domainkey.mydoctorplus.it`. Configure these
+records in the DNS panel that is authoritative for `mydoctorplus.it`:
+
+1. **SPF** — create or merge a single TXT record at the root domain:
+
+   ```text
+   v=spf1 include:_spf.aruba.it -all
+   ```
+
+   Use only one SPF TXT record. If another legitimate provider sends as
+   `@mydoctorplus.it`, merge its include/mechanism into this same record before
+   the final `-all`; never publish a second SPF record.
+
+2. **DKIM** — enable Aruba DKIM for the domain. Aruba's current guidance uses
+   the `a1` selector for its manual setup, so publish the exact TXT host and
+   public key Aruba shows for this mailbox (normally
+   `a1._domainkey.mydoctorplus.it`). Do not copy a key from another provider or
+   domain.
+
+3. **DMARC** — first publish a monitoring policy after creating the report
+   mailbox:
+
+   ```text
+   Host: _dmarc.mydoctorplus.it
+   Value: v=DMARC1; p=none; rua=mailto:dmarc@mydoctorplus.it; aspf=r; adkim=r
+   ```
+
+   Review aggregate reports for at least one normal sending cycle. Once all
+   approved senders pass alignment, move in stages to `p=quarantine` and then
+   `p=reject`. Do not publish report addresses that do not exist.
+
+## Safe verification and release checks
+
+The application verifies SMTP authentication at startup when
+`EMAIL_VERIFY_ON_STARTUP=true`. It does not send a message. The same no-send
+check is available locally:
+
+```powershell
+npm run email:verify
 ```
 
-### Option 2: Gmail with OAuth2 (Advanced)
+After DNS propagation, send one password-reset test to each target provider
+(Gmail, Outlook/Hotmail, iCloud, and a corporate mailbox) and inspect the full
+headers. Each must show:
 
-For production, consider using OAuth2 instead of app passwords for better security.
-
-## Other Email Providers
-
-### Outlook/Hotmail
-```env
-SMTP_HOST=smtp-mail.outlook.com
-SMTP_PORT=587
-SMTP_USER=your-email@outlook.com
-SMTP_PASS=your-password
+```text
+spf=pass
+dkim=pass header.d=mydoctorplus.it
+dmarc=pass header.from=mydoctorplus.it
 ```
 
-### Yahoo Mail
-```env
-SMTP_HOST=smtp.mail.yahoo.com
-SMTP_PORT=587
-SMTP_USER=your-email@yahoo.com
-SMTP_PASS=your-app-password
-```
+If an inbox still classifies a fully authenticated message as spam, keep the
+full headers and the provider's reason before changing template content. Sender
+authentication and domain reputation are evaluated by the recipient and cannot
+be corrected by HTML alone.
 
-### Custom SMTP Server
-```env
-SMTP_HOST=your-smtp-server.com
-SMTP_PORT=587  # or 465 for SSL
-SMTP_USER=your-email@domain.com
-SMTP_PASS=your-password
-```
+## Reference comparison
 
-## Testing Email Configuration
-
-After setting up your `.env` file:
-
-1. Restart your backend server
-2. Try the forgot password flow
-3. Check your email inbox (and spam folder)
-4. Check the server console for email sending logs
-
-## Troubleshooting
-
-### Email not sending
-- Check that all SMTP variables are set in `.env`
-- Verify your email credentials are correct
-- Check server console for error messages
-- For Gmail, make sure you're using an App Password, not your regular password
-
-### "SMTP not configured" warning
-- Make sure all SMTP variables are in your `.env` file
-- Restart the server after adding variables
-- Check that variable names match exactly: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`
-
-### Gmail "Less secure app" error
-- Use App Passwords instead of your regular password
-- Enable 2-Step Verification first
-
-## Security Notes
-
-- Never commit your `.env` file to version control
-- Use App Passwords for Gmail instead of your main password
-- For production, consider using environment-specific email services (SendGrid, Mailgun, AWS SES, etc.)
-
+The available completed reference in this workspace is `VeterinaryBackend`;
+there is no project named `Tenderiva` in the workspace. Its email service uses
+the same Nodemailer transport pattern and Aruba-compatible SMTP settings, but
+it has no deliverability mechanism that would compensate for a mismatched
+sender domain or absent DNS records. My Doctor now has the stricter configuration
+check, aligned envelope sender, startup verification, and bounded retry delivery.

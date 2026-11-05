@@ -4,6 +4,7 @@ const path = require('path');
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const REQUIRED = ["MONGO_URI", "JWT_SECRET", "REFRESH_TOKEN_SECRET", "PORT"];
+const isEnabled = (value, defaultValue = false) => ['true', '1', 'yes'].includes(String(value ?? defaultValue).trim().toLowerCase());
 
 // Optional but recommended for video calls
 const RECOMMENDED = ["STREAM_API_KEY", "STREAM_API_SECRET"];
@@ -36,14 +37,23 @@ module.exports = {
 
   // email
   EMAIL_ENABLED: !['false', '0', 'no'].includes(String(process.env.EMAIL_ENABLED || 'true').trim().toLowerCase()),
-  SMTP_HOST: process.env.SMTP_HOST,
-  SMTP_PORT: process.env.SMTP_PORT,
-  SMTP_SECURE: ['true', '1', 'yes'].includes(String(process.env.SMTP_SECURE || '').trim().toLowerCase()),
+  // My Doctor sends transactional mail through its Aruba domain mailbox.  The
+  // service validates this at send time, so a stale local Gmail configuration
+  // cannot silently defeat SPF/DKIM/DMARC alignment in production.
+  EMAIL_PROVIDER: String(process.env.EMAIL_PROVIDER || 'aruba').trim().toLowerCase(),
+  SMTP_HOST: String(process.env.SMTP_HOST || 'smtps.aruba.it').trim().toLowerCase(),
+  SMTP_PORT: Number(process.env.SMTP_PORT || 587),
+  SMTP_SECURE: isEnabled(process.env.SMTP_SECURE),
   SMTP_REQUIRE_TLS: !['false', '0', 'no'].includes(String(process.env.SMTP_REQUIRE_TLS || 'true').trim().toLowerCase()),
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASS: process.env.SMTP_PASS,
   SMTP_FROM: process.env.SMTP_FROM,
   SMTP_FROM_NAME: process.env.SMTP_FROM_NAME || 'My Doctor',
+  SMTP_REPLY_TO: process.env.SMTP_REPLY_TO,
+  SMTP_ENVELOPE_FROM: process.env.SMTP_ENVELOPE_FROM,
+  SMTP_MESSAGE_ID_DOMAIN: process.env.SMTP_MESSAGE_ID_DOMAIN,
+  EMAIL_VERIFY_ON_STARTUP: isEnabled(process.env.EMAIL_VERIFY_ON_STARTUP, process.env.NODE_ENV === 'production'),
+  EMAIL_MAX_CONCURRENCY: Math.max(1, Math.min(10, Number(process.env.EMAIL_MAX_CONCURRENCY || 3) || 3)),
   APP_URL: (process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, ''),
 
   // payment

@@ -3,6 +3,7 @@ const connectDB = require("./config/database");
 const config = require("./config/env");
 const { runAppointmentNotifications } = require("./workers/appointmentNotification.worker");
 const { runEmailNotifications } = require("./workers/emailNotification.worker");
+const { verifySmtpConnection } = require("./services/email.service");
 
 const PORT = config.PORT || 5000;
 
@@ -14,6 +15,12 @@ const PORT = config.PORT || 5000;
     app.listen(PORT, () => {
       console.log(`MyDoctor API running on port ${PORT}`);
     });
+
+    // This only authenticates to SMTP; it does not send a message.  It exposes
+    // a deployment misconfiguration immediately without holding up the API.
+    if (config.EMAIL_VERIFY_ON_STARTUP) {
+      verifySmtpConnection().catch((error) => console.error('[email] Startup SMTP verification crashed:', error.message));
+    }
 
     // Start appointment notification worker (runs every minute)
     setInterval(async () => {
