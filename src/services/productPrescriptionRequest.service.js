@@ -5,6 +5,7 @@ const User = require('../models/user.model');
 const Notification = require('../models/notification.model');
 const notificationService = require('./notification.service');
 const emailService = require('./email.service');
+const { localizeProduct } = require('../utils/localization');
 
 const httpError = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
@@ -107,18 +108,19 @@ const getEligibility = async (patientId, productId, variantId) => {
   return { requiresPrescription: true, canPurchase: request?.status === 'APPROVED', status: request?.status || 'NOT_SUBMITTED', request: request || null };
 };
 
-const hydrateRequests = async (requests, pagination) => {
+const hydrateRequests = async (requests, pagination, lang) => {
   const productIds = [...new Set(requests.map((request) => String(request.productId)).filter(Boolean))];
   const patientIds = [...new Set(requests.map((request) => String(request.patientId)).filter(Boolean))];
   const [products, patients] = await Promise.all([
-    Product.find({ _id: { $in: productIds } }).select('name images variants').lean(),
+    Product.find({ _id: { $in: productIds } }).select('name images variants i18n').lean(),
     User.find({ _id: { $in: patientIds } }).select('fullName email phone').lean(),
   ]);
   const productById = new Map(products.map((product) => [String(product._id), product]));
   const patientById = new Map(patients.map((patient) => [String(patient._id), patient]));
   return {
     requests: requests.map((request) => {
-      const product = productById.get(String(request.productId));
+      const sourceProduct = productById.get(String(request.productId));
+      const product = sourceProduct ? localizeProduct(sourceProduct, lang) : null;
       return {
         ...request,
         patientId: patientById.get(String(request.patientId)) || null,
@@ -136,7 +138,7 @@ const listMine = async (patientId, options = {}) => {
     ProductPrescriptionRequest.find({ patientId }).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     ProductPrescriptionRequest.countDocuments({ patientId }),
   ]);
-  return hydrateRequests(requests, { page, limit, total });
+  return hydrateRequests(requests, { page, limit, total }, options.lang);
 };
 
 const listForSeller = async (ownerId, options = {}) => {
@@ -148,7 +150,7 @@ const listForSeller = async (ownerId, options = {}) => {
     ProductPrescriptionRequest.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     ProductPrescriptionRequest.countDocuments(query),
   ]);
-  return hydrateRequests(requests, { page, limit, total });
+  return hydrateRequests(requests, { page, limit, total }, options.lang);
 };
 
 const reviewRequest = async (ownerId, requestId, data) => {

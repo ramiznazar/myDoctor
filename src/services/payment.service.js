@@ -1,6 +1,7 @@
 const Transaction = require('../models/transaction.model');
 const Appointment = require('../models/appointment.model');
 const User = require('../models/user.model');
+const mongoose = require('mongoose');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const Product = require('../models/product.model');
 const DoctorSubscription = require('../models/doctorSubscription.model');
@@ -424,18 +425,66 @@ const refundTransaction = async (transactionId) => {
  * @param {Object} options - Filter options
  * @returns {Promise<Object>} Transactions and pagination
  */
-const getUserTransactions = async (userId, options = {}) => {
-  const { status, page = 1, limit = 10 } = options;
+const getUserTransactions = async (userId, userRole, options = {}) => {
+  const { status, search } = options;
+  const page = Math.max(Number.parseInt(options.page, 10) || 1, 1);
+  const limit = Math.min(Math.max(Number.parseInt(options.limit, 10) || 10, 1), 100);
   const skip = (page - 1) * limit;
+  const criteria = [];
 
-  const query = { userId };
-  if (status) {
-    query.status = status.toUpperCase();
+  // A doctor owns their subscription transactions and the payments made by
+  // patients for that doctor's appointments.  The latter used to be absent
+  // from the Doctor Invoices screen because those payments belong to the
+  // patient as the payer.
+  const accessClauses = [{ userId }];
+  if (userRole === 'DOCTOR') {
+    const doctorAppointmentIds = await Appointment.find({ doctorId: userId }).distinct('_id');
+    if (doctorAppointmentIds.length) {
+      accessClauses.push({ relatedAppointmentId: { $in: doctorAppointmentIds } });
+    }
   }
+  criteria.push({ $or: accessClauses });
+
+  if (status) {
+    criteria.push({ status: String(status).toUpperCase() });
+  }
+
+  if (String(search || '').trim()) {
+    const escapedSearch = String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const expression = new RegExp(escapedSearch, 'i');
+    const searchClauses = [
+      { provider: expression },
+      { providerReference: expression }
+    ];
+
+    if (mongoose.isValidObjectId(String(search).trim())) {
+      searchClauses.push({ _id: new mongoose.Types.ObjectId(String(search).trim()) });
+    }
+
+    const appointmentScope = userRole === 'DOCTOR' ? { doctorId: userId } : { patientId: userId };
+    const matchingPatientIds = userRole === 'DOCTOR'
+      ? await User.find({ fullName: expression }).distinct('_id')
+      : [];
+    const appointmentClauses = [{ appointmentNumber: expression }];
+    if (matchingPatientIds.length) appointmentClauses.push({ patientId: { $in: matchingPatientIds } });
+    const matchingAppointmentIds = await Appointment.find({
+      ...appointmentScope,
+      $or: appointmentClauses
+    }).distinct('_id');
+    if (matchingAppointmentIds.length) {
+      searchClauses.push({ relatedAppointmentId: { $in: matchingAppointmentIds } });
+    }
+    criteria.push({ $or: searchClauses });
+  }
+
+  const query = criteria.length === 1 ? criteria[0] : { $and: criteria };
 
   const [transactions, total] = await Promise.all([
     Transaction.find(query)
-      .populate('relatedAppointmentId')
+      .populate({
+        path: 'relatedAppointmentId',
+        populate: { path: 'patientId', select: 'fullName email profileImage' }
+      })
       .populate('relatedSubscriptionId')
       .populate('relatedProductId')
       .sort({ createdAt: -1 })
@@ -460,15 +509,27 @@ const getUserTransactions = async (userId, options = {}) => {
  * @param {string} transactionId - Transaction ID
  * @returns {Promise<Object>} Transaction
  */
-const getTransactionById = async (transactionId) => {
+const getTransactionById = async (transactionId, requesterId, requesterRole) => {
   const transaction = await Transaction.findById(transactionId)
     .populate('userId', 'fullName email')
-    .populate('relatedAppointmentId')
+    .populate({
+      path: 'relatedAppointmentId',
+      populate: { path: 'patientId', select: 'fullName email profileImage' }
+    })
     .populate('relatedSubscriptionId')
     .populate('relatedProductId');
   
   if (!transaction) {
     throw new Error('Transaction not found');
+  }
+
+  const isPayer = String(transaction.userId?._id || transaction.userId) === String(requesterId);
+  const isAppointmentDoctor = requesterRole === 'DOCTOR' &&
+    String(transaction.relatedAppointmentId?.doctorId || '') === String(requesterId);
+  if (requesterRole !== 'ADMIN' && !isPayer && !isAppointmentDoctor) {
+    const error = new Error('You do not have permission to view this transaction');
+    error.statusCode = 403;
+    throw error;
   }
 
   return transaction;

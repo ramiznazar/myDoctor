@@ -22,7 +22,8 @@ exports.getById = asyncHandler(async (req, res) => {
   const result = await orderService.getOrderById(
     req.params.id,
     req.userId,
-    req.userRole
+    req.userRole,
+    { lang: req.lang }
   );
   res.json({ success: true, message: 'OK', data: result });
 });
@@ -31,7 +32,7 @@ exports.getById = asyncHandler(async (req, res) => {
  * Get patient orders
  */
 exports.getPatientOrders = asyncHandler(async (req, res) => {
-  const result = await orderService.getPatientOrders(req.userId, req.query);
+  const result = await orderService.getPatientOrders(req.userId, { ...req.query, lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -53,7 +54,7 @@ exports.getPharmacyOrders = asyncHandler(async (req, res) => {
       await subscriptionPolicy.enforcePharmacySubscriptionActive({ pharmacyUserId: req.userId });
     }
   }
-  const result = await orderService.getPharmacyOrders(req.userId, req.query);
+  const result = await orderService.getPharmacyOrders(req.userId, { ...req.query, lang: req.lang });
   res.json({ success: true, message: 'OK', data: result });
 });
 

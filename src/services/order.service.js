@@ -5,6 +5,7 @@ const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
 const notificationService = require('./notification.service');
 const emailService = require('./email.service');
+const { localizeProduct } = require('../utils/localization');
 const {
   DELIVERY_DAY_OPTIONS,
   DELIVERY_STATUS,
@@ -24,6 +25,22 @@ const notify = async (userId, title, body, data) => {
 };
 
 const toPlainOrder = (order) => (order?.toObject ? order.toObject() : order);
+
+// Product descriptions and option labels can have approved Italian/English
+// values. Order views populate the live product record, so localize that
+// snapshot at the API boundary just as the catalogue endpoints do.
+const localizeOrderProducts = (order, lang) => {
+  const plainOrder = toPlainOrder(order);
+  if (!plainOrder || !lang) return plainOrder;
+
+  return {
+    ...plainOrder,
+    items: (plainOrder.items || []).map((item) => {
+      if (!item?.productId || typeof item.productId !== 'object') return item;
+      return { ...item, productId: localizeProduct(item.productId, lang) };
+    })
+  };
+};
 
 // Keep delivery status accurate without a background job. This mirrors the
 // Veterinary order flow and persists a changed monitoring state for reports.
@@ -239,7 +256,7 @@ const createOrder = async (patientId, items, shippingAddress, paymentMethod = nu
  * @param {string} userRole - User role
  * @returns {Promise<Object>} Order
  */
-const getOrderById = async (orderId, userId, userRole) => {
+const getOrderById = async (orderId, userId, userRole, { lang } = {}) => {
   const order = await Order.findById(orderId)
     .populate('patientId', 'fullName email phone')
     .populate('pharmacyId')
@@ -268,7 +285,7 @@ const getOrderById = async (orderId, userId, userRole) => {
   }
 
   const [monitoredOrder] = await refreshDeliveryMonitoring([order]);
-  return monitoredOrder;
+  return localizeOrderProducts(monitoredOrder, lang);
 };
 
 /**
@@ -278,7 +295,7 @@ const getOrderById = async (orderId, userId, userRole) => {
  * @returns {Promise<Object>} Orders and pagination
  */
 const getPatientOrders = async (patientId, options = {}) => {
-  const { status, page = 1, limit = 10 } = options;
+  const { status, page = 1, limit = 10, lang } = options;
   const skip = (page - 1) * limit;
 
   const query = { patientId };
@@ -290,7 +307,7 @@ const getPatientOrders = async (patientId, options = {}) => {
     Order.find(query)
       .populate('pharmacyId', 'name logo')
       .populate('ownerId', 'fullName')
-      .populate('items.productId', 'name images price discountPrice')
+      .populate('items.productId', 'name images price discountPrice variants i18n')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -310,7 +327,7 @@ const getPatientOrders = async (patientId, options = {}) => {
   const monitoredOrders = await refreshDeliveryMonitoring(orders);
 
   return {
-    orders: monitoredOrders,
+    orders: monitoredOrders.map((order) => localizeOrderProducts(order, lang)),
     pagination: {
       page,
       limit,
@@ -327,7 +344,7 @@ const getPatientOrders = async (patientId, options = {}) => {
  * @returns {Promise<Object>} Orders and pagination
  */
 const getPharmacyOrders = async (ownerId, options = {}) => {
-  const { status, page = 1, limit = 10 } = options;
+  const { status, page = 1, limit = 10, lang } = options;
   const skip = (page - 1) * limit;
 
   // Ensure ownerId is an ObjectId for proper comparison
@@ -355,7 +372,7 @@ const getPharmacyOrders = async (ownerId, options = {}) => {
     Order.find(query)
       .populate('patientId', 'fullName email phone')
       .populate('pharmacyId', 'name')
-      .populate('items.productId', 'name images price discountPrice')
+      .populate('items.productId', 'name images price discountPrice variants i18n')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -381,7 +398,7 @@ const getPharmacyOrders = async (ownerId, options = {}) => {
   }
 
   return {
-    orders: monitoredOrders,
+    orders: monitoredOrders.map((order) => localizeOrderProducts(order, lang)),
     pagination: {
       page,
       limit,

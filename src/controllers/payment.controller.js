@@ -59,7 +59,7 @@ exports.processOrderPayment = asyncHandler(async (req, res) => {
  * Get user transactions
  */
 exports.getUserTransactions = asyncHandler(async (req, res) => {
-  const result = await paymentService.getUserTransactions(req.userId, req.query);
+  const result = await paymentService.getUserTransactions(req.userId, req.userRole, req.query);
   res.json({ success: true, message: 'OK', data: result });
 });
 
@@ -67,7 +67,7 @@ exports.getUserTransactions = asyncHandler(async (req, res) => {
  * Get transaction by ID
  */
 exports.getTransactionById = asyncHandler(async (req, res) => {
-  const result = await paymentService.getTransactionById(req.params.id);
+  const result = await paymentService.getTransactionById(req.params.id, req.userId, req.userRole);
   res.json({ success: true, message: 'OK', data: result });
 });
 
