@@ -3,6 +3,7 @@ const { sendContactQueryReceivedEmail, sendContactQueryStatusEmail, sendContactQ
 
 const STATUSES = ['NEW', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
 const clean = (value, max) => String(value || '').trim().slice(0, max);
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const error = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
 const createContactQuery = async (payload = {}) => {
@@ -26,7 +27,11 @@ const listContactQueries = async (options = {}) => {
   const status = clean(options.status, 30).toUpperCase();
   const search = clean(options.search, 160);
   if (STATUSES.includes(status)) query.status = status;
-  if (search) query.$or = ['name', 'email', 'phone', 'services', 'message'].map((field) => ({ [field]: { $regex: search, $options: 'i' } }));
+  if (search) {
+    const safeSearch = escapeRegExp(search);
+    query.$or = ['name', 'email', 'phone', 'services', 'message']
+      .map((field) => ({ [field]: { $regex: safeSearch, $options: 'i' } }));
+  }
   const [queries, total] = await Promise.all([
     ContactQuery.find(query).populate('resolvedBy', 'fullName email').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     ContactQuery.countDocuments(query),
