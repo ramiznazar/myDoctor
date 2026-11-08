@@ -105,13 +105,20 @@ const queueWelcomeOnce = async (user) => {
   if (claimed) await sendWelcomeEmail({ user: claimed });
 };
 
-/** Register a user. Only patient accounts wait for email verification. */
+/**
+ * Register a user.
+ *
+ * Patient accounts still need to verify before they can create a session.
+ * Professional accounts can enter their setup/dashboard while their profile
+ * and documents are being reviewed, but their email address must be verified
+ * independently from that approval workflow.
+ */
 const registerUser = async (data) => {
   const normalizedRole = String(data?.role || '').toUpperCase();
   const email = normalizeEmail(data?.email);
   const fullName = String(data?.fullName || '').trim();
   const isPharmacy = ['PHARMACY', 'PARAPHARMACY'].includes(normalizedRole);
-  const requiresEmailVerification = normalizedRole === 'PATIENT';
+  const requiresEmailVerification = ['PATIENT', 'DOCTOR', 'PHARMACY', 'PARAPHARMACY'].includes(normalizedRole);
   if (!email || !fullName) throw new Error('Full name and email address are required');
   if (isPharmacy && !isE164(data.phone)) throw new Error('Phone number must be in international format (E.164), e.g. +1234567890');
 
@@ -142,7 +149,7 @@ const registerUser = async (data) => {
     profileImage: data.profileImage || null,
     status: requiresEmailVerification ? 'PENDING' : normalizedRole === 'PATIENT' ? 'APPROVED' : 'PENDING',
     isPhoneVerified: false,
-    isEmailVerified: !requiresEmailVerification,
+    isEmailVerified: false,
     emailVerificationRequired: requiresEmailVerification,
   });
 
@@ -155,7 +162,17 @@ const registerUser = async (data) => {
     if (isPharmacy) await sendPhoneOtp(user.phone);
     if (requiresEmailVerification) {
       await issueVerificationCode(user, EMAIL_VERIFICATION_PURPOSE, { enforceCooldown: false });
-      return { requiresEmailVerification: true, email: user.email, user: viewUser(user) };
+      // Only patients are held at the email screen. Professionals retain a
+      // session so they can complete onboarding and see the dashboard banner.
+      if (normalizedRole === 'PATIENT') {
+        return { requiresEmailVerification: true, email: user.email, user: viewUser(user) };
+      }
+      return {
+        user: viewUser(user),
+        token: tokenFor(user),
+        emailVerificationRequired: true,
+        verificationEmailSent: true,
+      };
     }
   } catch (error) {
     await User.deleteOne({ _id: user._id });
@@ -169,10 +186,15 @@ const verifyEmail = async (email, code) => {
   const record = await findValidCode({ email, purpose: EMAIL_VERIFICATION_PURPOSE, code });
   if (!record) throw new Error('Invalid or expired verification code');
   const user = await User.findById(record.userId);
-  if (!user || user.role !== 'PATIENT' || !user.emailVerificationRequired) throw new Error('Account not found');
+  if (!user || !['PATIENT', 'DOCTOR', 'PHARMACY', 'PARAPHARMACY'].includes(user.role) || !user.emailVerificationRequired) {
+    throw new Error('Account not found');
+  }
   user.isEmailVerified = true;
   user.emailVerificationRequired = false;
-  user.status = 'APPROVED';
+  // Email verification is not administrator approval. Only patients become
+  // approved here; doctors and businesses remain pending until documents are
+  // reviewed by an administrator.
+  if (user.role === 'PATIENT') user.status = 'APPROVED';
   record.isUsed = true;
   await Promise.all([user.save(), record.save()]);
   await queueWelcomeOnce(user).catch((error) => console.error('[email] welcome email queue failed:', error.message));
@@ -182,7 +204,14 @@ const verifyEmail = async (email, code) => {
 const resendEmailVerification = async (email) => {
   const user = await User.findOne({ email: normalizeEmail(email) });
   // Keep this endpoint non-enumerating.
-  if (!user || user.role !== 'PATIENT' || !user.emailVerificationRequired || user.isEmailVerified) return;
+  if (!user || !['PATIENT', 'DOCTOR', 'PHARMACY', 'PARAPHARMACY'].includes(user.role) || user.isEmailVerified) return;
+  // Professional accounts created before email verification was introduced
+  // have no requirement flag. Activating it here lets them verify from their
+  // dashboard without changing their approval status or login access.
+  if (!user.emailVerificationRequired) {
+    user.emailVerificationRequired = true;
+    await user.save();
+  }
   await issueVerificationCode(user, EMAIL_VERIFICATION_PURPOSE);
 };
 
@@ -241,7 +270,7 @@ const loginUser = async ({ email, password }) => {
   const user = await User.findOne({ email: normalizeEmail(email) }).select('+password');
   if (!user || !user.password || !(await bcrypt.compare(password, user.password))) throw new Error('Invalid email or password');
   if (['BLOCKED', 'REJECTED'].includes(user.status)) throw new Error('Account is blocked or rejected');
-  if (user.emailVerificationRequired && !user.isEmailVerified) {
+  if (user.role === 'PATIENT' && user.emailVerificationRequired && !user.isEmailVerified) {
     const error = new Error('Please verify your email address before logging in');
     error.statusCode = 403;
     throw error;

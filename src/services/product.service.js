@@ -2,6 +2,7 @@ const Product = require('../models/product.model');
 const User = require('../models/user.model');
 const SubscriptionPlan = require('../models/subscriptionPlan.model');
 const subscriptionPolicy = require('./subscriptionPolicy.service');
+const { assessLowStockForProduct, thresholdFor } = require('./inventory.service');
 const { normalizeLang, localizeProduct } = require('../utils/localization');
 
 const nullableNumber = (value) => {
@@ -42,11 +43,15 @@ const normalizeVariants = (variants, fallback = {}) => {
     const price = nullableNumber(variant?.price);
     const discountPrice = nullableNumber(variant?.discountPrice);
     const stock = nullableNumber(variant?.stock);
+    const lowStockThreshold = nullableNumber(variant?.lowStockThreshold);
     if (price === null || price < 0) {
       throw productValidationError(`variants.${index}.price`, `Enter a valid regular price for option ${index + 1}`);
     }
     if (stock === null || stock < 0 || !Number.isInteger(stock)) {
       throw productValidationError(`variants.${index}.stock`, `Enter a whole stock quantity for option ${index + 1}`);
+    }
+    if (lowStockThreshold !== null && (lowStockThreshold < 0 || !Number.isInteger(lowStockThreshold))) {
+      throw productValidationError(`variants.${index}.lowStockThreshold`, `Enter a whole low-stock alert level for option ${index + 1}`);
     }
     if (discountPrice !== null && (discountPrice < 0 || discountPrice >= price)) {
       throw productValidationError(`variants.${index}.discountPrice`, `The sale price must be lower than the regular price for option ${index + 1}`);
@@ -66,6 +71,7 @@ const normalizeVariants = (variants, fallback = {}) => {
       price,
       discountPrice,
       stock,
+      lowStockThreshold,
       isDefault: Boolean(variant?.isDefault),
       isActive: variant?.isActive !== false,
     };
@@ -113,10 +119,16 @@ const normaliseProductData = (data, existing = {}) => {
     stock: data.stock ?? existing.stock,
   });
   const summary = getVariantSummary(variants);
+  const rawThreshold = data.lowStockThreshold ?? existing.lowStockThreshold ?? 5;
+  const lowStockThreshold = nullableNumber(rawThreshold);
+  if (lowStockThreshold === null || lowStockThreshold < 0 || !Number.isInteger(lowStockThreshold)) {
+    throw productValidationError('lowStockThreshold', 'Low-stock alert level must be a non-negative whole number');
+  }
   return {
     ...data,
     ...summary,
     variants,
+    lowStockThreshold,
     sku: nullableText(data.sku ?? existing.sku) || undefined,
     barcode: nullableText(data.barcode ?? existing.barcode),
     brand: nullableText(data.brand ?? existing.brand),
@@ -151,7 +163,7 @@ const createProduct = async (data) => {
   if (productType === 'PHARMACY_MEDICINE' && !nullableText(normalized.medicineDetails?.activeIngredients)) {
     throw productValidationError('medicineDetails.activeIngredients', 'Active ingredients are required for a medicine');
   }
-  return Product.create({
+  const product = await Product.create({
     ...normalized,
     sellerId: data.sellerId,
     sellerType,
@@ -164,6 +176,8 @@ const createProduct = async (data) => {
     requiresPrescription: Boolean(data.requiresPrescription),
     isActive: data.isActive !== false,
   });
+  await assessLowStockForProduct(product._id).catch((error) => console.error('Unable to assess product stock:', error.message));
+  return product;
 };
 
 const updateProduct = async (id, data, userId) => {
@@ -197,7 +211,46 @@ const updateProduct = async (id, data, userId) => {
   if (Object.prototype.hasOwnProperty.call(update, 'sku')) update.sku = nullableText(update.sku) || undefined;
   Object.assign(product, update);
   await product.save();
+  await assessLowStockForProduct(product._id).catch((error) => console.error('Unable to assess product stock:', error.message));
   return product;
+};
+
+const getInventorySummary = async (sellerId) => {
+  const products = await Product.find({ sellerId }).select('name stock lowStockThreshold variants isActive images updatedAt').sort({ updatedAt: -1 });
+  const lowStockItems = [];
+  let totalUnits = 0;
+  let outOfStockCount = 0;
+
+  products.forEach((product) => {
+    const activeVariants = (product.variants || []).filter((variant) => variant.isActive !== false);
+    if (activeVariants.length) {
+      activeVariants.forEach((variant) => {
+        const stock = Number(variant.stock || 0);
+        const threshold = thresholdFor(variant, product);
+        totalUnits += stock;
+        if (stock <= threshold) {
+          if (stock === 0) outOfStockCount += 1;
+          lowStockItems.push({ productId: product._id, productName: product.name, productImage: product.images?.[0] || null, variantId: variant._id, variantName: variant.name, stock, threshold });
+        }
+      });
+      return;
+    }
+    const stock = Number(product.stock || 0);
+    const threshold = Number(product.lowStockThreshold ?? 5);
+    totalUnits += stock;
+    if (stock <= threshold) {
+      if (stock === 0) outOfStockCount += 1;
+      lowStockItems.push({ productId: product._id, productName: product.name, productImage: product.images?.[0] || null, variantId: null, variantName: null, stock, threshold });
+    }
+  });
+
+  return {
+    totalProducts: products.length,
+    totalUnits,
+    lowStockCount: lowStockItems.length,
+    outOfStockCount,
+    lowStockItems: lowStockItems.slice(0, 20),
+  };
 };
 
 const getProduct = async (id, options = {}) => {
@@ -284,4 +337,4 @@ const deleteProduct = async (id, userId) => {
   return { message: 'Product deleted successfully' };
 };
 
-module.exports = { createProduct, updateProduct, getProduct, listProducts, deleteProduct, normalizeVariants };
+module.exports = { createProduct, updateProduct, getProduct, listProducts, deleteProduct, getInventorySummary, normalizeVariants };

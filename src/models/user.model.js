@@ -26,9 +26,9 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  // New patient registrations are deliberately kept separate from existing
-  // accounts until their email address is verified. Existing users retain
-  // their current access because emailVerificationRequired defaults to false.
+  // New accounts verify their email independently from their role-specific
+  // approval flow. Existing users retain their current access because the
+  // requirement defaults to false.
   isEmailVerified: {
     type: Boolean,
     default: false

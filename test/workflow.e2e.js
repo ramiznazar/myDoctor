@@ -153,7 +153,7 @@ const seed = async () => {
     name: 'Workflow Health Product',
     price: 12,
     images: ['/uploads/products/workflow-product.jpg'],
-    stock: 10,
+    stock: 5,
     category: 'Health',
   });
   const prescriptionProduct = await Product.create({
@@ -259,10 +259,22 @@ const main = async () => {
     const activatedPharmacySetup = expectOk(await api('/pharmacy/setup-status', { token: pharmacyToken }), 'activated pharmacy setup');
     assert.equal(activatedPharmacySetup.isSetupComplete, true, 'completed pharmacy setup remains complete after server refresh');
 
+    // Product images accept standard PNG uploads even when a browser reports
+    // a vendor-specific MIME type. The server response gives the exact path
+    // used later by product cards and order views.
+    const productImageUpload = new FormData();
+    productImageUpload.append('files', new Blob(['workflow png fixture'], { type: 'image/x-png' }), 'workflow-product.png');
+    const uploadedProductImage = expectOk(await multipartApi('/upload/product', { token: pharmacyToken, formData: productImageUpload }), 'pharmacy uploads a PNG product image');
+    assert.equal(uploadedProductImage.urls.length, 1, 'PNG product image upload returns one URL');
+    const storedProductImage = path.join(process.cwd(), uploadedProductImage.urls[0].replace(/^\/uploads\//, 'uploads/'));
+    assert.equal(fs.existsSync(storedProductImage), true, 'PNG product image is stored by the backend');
+    fs.unlinkSync(storedProductImage);
+
     const richProduct = expectOk(await api('/products', {
       method: 'POST', token: pharmacyToken,
       body: {
         name: 'Workflow Variant Medicine', price: 10, stock: 9,
+        lowStockThreshold: 4,
         description: 'Detailed product created through the pharmacy product API.',
         productType: 'PHARMACY_MEDICINE', category: 'Wellness', brand: 'Workflow',
         images: ['/uploads/products/workflow-variant-product.jpg'],
@@ -277,6 +289,8 @@ const main = async () => {
     const richProductView = expectOk(await api(`/products/${richProduct._id}`), 'patient product detail receives all saved information');
     assert.equal(richProductView.variants[1].discountPrice, 15, 'variant sale price is returned to patient product pages');
     assert.equal(richProductView.shippingSettings, undefined, 'product details do not expose fixed seller shipping settings');
+    const pharmacyInventory = expectOk(await api('/products/inventory/summary', { token: pharmacyToken }), 'pharmacy inventory summary');
+    assert.equal(pharmacyInventory.lowStockItems.some((item) => String(item.productId) === String(richProduct._id) && item.stock === 4 && item.threshold === 4), true, 'variant threshold is reflected in seller inventory');
 
     const now = new Date();
     const appointmentDate = calendarDate(now);
@@ -527,6 +541,15 @@ const main = async () => {
       method: 'POST', token: patientToken, body: { paymentMethod: 'STRIPE' },
     }), 'patient pays after the seller quote');
     assert.equal(paidOrder.paymentStatus, 'PAID', 'the quoted order becomes paid');
+    const lowStockProduct = expectOk(await api(`/products/${product._id}`), 'product after paid order');
+    assert.equal(lowStockProduct.stock, 4, 'paid checkout decrements product stock');
+    const lowStockNotification = await Notification.findOne({
+      userId: parapharmacy._id,
+      type: 'SYSTEM',
+      'data.event': 'LOW_STOCK',
+      'data.productId': product._id.toString(),
+    }).lean();
+    assert.equal(Boolean(lowStockNotification), true, 'crossing the threshold creates one low-stock alert for the seller');
 
     // Prescription-only products reject an order until the seller reviews the
     // exact selected option. Approval then unlocks only that patient/product

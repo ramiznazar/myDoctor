@@ -14,6 +14,11 @@ const productVariantSchema = new mongoose.Schema({
   price: { type: Number, required: true, min: 0 },
   discountPrice: { type: Number, default: null, min: 0 },
   stock: { type: Number, required: true, min: 0, default: 0 },
+  // A variant can inherit the product threshold, or use its own threshold
+  // when one option tends to sell faster than the others.
+  lowStockThreshold: { type: Number, default: null, min: 0 },
+  lowStockAlertActive: { type: Boolean, default: false },
+  lowStockAlertAt: { type: Date, default: null },
   isDefault: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
 }, { _id: true });
@@ -115,6 +120,22 @@ const productSchema = new mongoose.Schema({
   },
   stock: {
     type: Number,
+    default: null
+  },
+  lowStockThreshold: {
+    type: Number,
+    default: 5,
+    min: 0
+  },
+  // These fields make the low-stock alert edge-triggered: an owner receives
+  // one alert when stock crosses the threshold and another only after stock
+  // is replenished and later becomes low again.
+  lowStockAlertActive: {
+    type: Boolean,
+    default: false
+  },
+  lowStockAlertAt: {
+    type: Date,
     default: null
   },
   category: {

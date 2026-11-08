@@ -1,119 +1,78 @@
 /**
- * Admin User Seeder
- * Creates an admin user in the database
- * 
- * Usage:
- *   node src/seeders/admin.seeder.js
- * 
- * Or with custom values:
- *   ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=password123 node src/seeders/admin.seeder.js
+ * Safely create or rotate an administrator account.
+ *
+ * Required environment variables:
+ *   ADMIN_EMAIL, ADMIN_PASSWORD
+ * Optional:
+ *   ADMIN_NAME, ADMIN_CURRENT_EMAIL
+ *
+ * Use ADMIN_CURRENT_EMAIL when changing an existing admin email. It updates
+ * that same record instead of creating a second administrator.
  */
-
 require('dotenv').config();
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const User = require('../models/user.model');
 
-// Get admin credentials from environment or use defaults
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@mydoctor.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123456';
-const ADMIN_NAME = process.env.ADMIN_NAME || 'Admin User';
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const ADMIN_EMAIL = normalizeEmail(process.env.ADMIN_EMAIL);
+const ADMIN_CURRENT_EMAIL = normalizeEmail(process.env.ADMIN_CURRENT_EMAIL);
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '');
+const ADMIN_NAME = String(process.env.ADMIN_NAME || 'My Doctor Administrator').trim();
+const MONGODB_URI = process.env.MONGO_URI || process.env.MONGODB_URI || process.env.DATABASE_URL;
 
-// MongoDB connection string
-const MONGODB_URI = process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/mydoctor';
+const fail = (message) => { throw new Error(message); };
 
 async function seedAdmin() {
+  if (!MONGODB_URI) fail('MONGO_URI (or MONGODB_URI/DATABASE_URL) is required.');
+  if (!ADMIN_EMAIL) fail('ADMIN_EMAIL is required.');
+  if (ADMIN_PASSWORD.length < 12) fail('ADMIN_PASSWORD must be at least 12 characters long.');
+
   try {
-    console.log('🌱 Starting Admin Seeder...\n');
-    
-    // Connect to MongoDB
-    console.log('📡 Connecting to MongoDB...');
     await mongoose.connect(MONGODB_URI);
-    console.log('✅ Connected to MongoDB\n');
 
-    // Check if admin already exists
-    console.log('🔍 Checking if admin user exists...');
-    const existingAdmin = await User.findOne({ email: ADMIN_EMAIL.toLowerCase() });
-    
-    if (existingAdmin) {
-      console.log('⚠️  Admin user already exists!');
-      console.log('   Email:', existingAdmin.email);
-      console.log('   Role:', existingAdmin.role);
-      console.log('   Status:', existingAdmin.status);
-      console.log('\n🔄 Updating admin user...');
-      
-      // Update existing admin
-      const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
-      existingAdmin.password = hashedPassword;
-      existingAdmin.fullName = ADMIN_NAME;
-      existingAdmin.role = 'ADMIN';
-      existingAdmin.status = 'APPROVED';
-      existingAdmin.updatedAt = new Date();
-      
-      await existingAdmin.save();
-      console.log('✅ Admin user updated successfully!\n');
-    } else {
-      console.log('➕ Creating new admin user...');
-      
-      // Hash password
-      const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
-      
-      // Create admin user
-      const admin = await User.create({
-        email: ADMIN_EMAIL.toLowerCase(),
-        password: hashedPassword,
-        fullName: ADMIN_NAME,
-        role: 'ADMIN',
-        status: 'APPROVED'
-      });
-      
-      console.log('✅ Admin user created successfully!\n');
+    let admin = ADMIN_CURRENT_EMAIL
+      ? await User.findOne({ email: ADMIN_CURRENT_EMAIL }).select('+password')
+      : await User.findOne({ email: ADMIN_EMAIL }).select('+password');
+
+    if (admin && admin.role !== 'ADMIN') {
+      fail('The selected current email belongs to a non-admin account. Refusing to change it.');
     }
 
-    // Verify the admin user
-    console.log('✅ Verifying admin user...');
-    const admin = await User.findOne({ email: ADMIN_EMAIL.toLowerCase() }).select('+password');
-    
     if (!admin) {
-      throw new Error('Admin user was not created!');
+      const accountWithTargetEmail = await User.findOne({ email: ADMIN_EMAIL });
+      if (accountWithTargetEmail) fail('The requested admin email already belongs to another account.');
+      admin = new User({ email: ADMIN_EMAIL, fullName: ADMIN_NAME, role: 'ADMIN', status: 'APPROVED' });
+      console.log('Creating administrator account.');
+    } else {
+      const accountWithTargetEmail = await User.findOne({ email: ADMIN_EMAIL, _id: { $ne: admin._id } });
+      if (accountWithTargetEmail) fail('The requested admin email already belongs to another account.');
+      console.log('Updating the existing administrator account.');
     }
 
-    // Test password
-    const passwordMatch = await bcrypt.compare(ADMIN_PASSWORD, admin.password);
-    if (!passwordMatch) {
-      throw new Error('Password verification failed!');
+    // The user model hashes a plain password on save. Never print it.
+    admin.email = ADMIN_EMAIL;
+    admin.password = ADMIN_PASSWORD;
+    admin.fullName = ADMIN_NAME;
+    admin.role = 'ADMIN';
+    admin.status = 'APPROVED';
+    admin.isEmailVerified = true;
+    admin.emailVerificationRequired = false;
+    await admin.save();
+
+    const saved = await User.findById(admin._id).select('+password');
+    if (!saved || !(await bcrypt.compare(ADMIN_PASSWORD, saved.password))) {
+      fail('Credential verification failed; no login credentials were displayed.');
     }
 
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ ADMIN USER SEEDED SUCCESSFULLY!');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📧 Email:', admin.email);
-    console.log('🔑 Password:', ADMIN_PASSWORD);
-    console.log('👤 Name:', admin.fullName);
-    console.log('🎭 Role:', admin.role);
-    console.log('📊 Status:', admin.status);
-    console.log('🆔 User ID:', admin._id);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('\n📝 Login Credentials:');
-    console.log('   POST http://localhost:5000/api/auth/login');
-    console.log('   Body: {');
-    console.log('     "email": "' + admin.email + '",');
-    console.log('     "password": "' + ADMIN_PASSWORD + '"');
-    console.log('   }');
-    console.log('\n✅ Password verification: PASSED');
-    console.log('✅ All checks passed!\n');
-    
-    process.exit(0);
-  } catch (error) {
-    console.error('\n❌ Error seeding admin:', error.message);
-    console.error('\nFull error:', error);
-    process.exit(1);
+    console.log(`Administrator credentials updated for ${saved.email}.`);
+    console.log('Password verification passed.');
   } finally {
-    await mongoose.disconnect();
-    console.log('📡 Disconnected from MongoDB');
+    if (mongoose.connection.readyState !== 0) await mongoose.disconnect();
   }
 }
 
-// Run seeder
-seedAdmin();
-
+seedAdmin().catch((error) => {
+  console.error(`Admin credential update failed: ${error.message}`);
+  process.exitCode = 1;
+});

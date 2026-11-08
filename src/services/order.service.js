@@ -5,6 +5,7 @@ const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
 const notificationService = require('./notification.service');
 const emailService = require('./email.service');
+const { assessLowStockForProduct } = require('./inventory.service');
 const { localizeProduct } = require('../utils/localization');
 const {
   DELIVERY_DAY_OPTIONS,
@@ -742,6 +743,12 @@ const payForOrder = async (orderId, userId, userRole, paymentMethod = 'STRIPE') 
       context: { kind: 'ORDER_RECEIVED', label: `Ordine ${order.orderNumber}`, message: 'Hai ricevuto il pagamento per un ordine. Puoi procedere con l’elaborazione.', url: `${require('../config/env').APP_URL}/pharmacy/orders` },
     }),
   ]).catch((error) => console.error('[email] order payment email queue failed:', error.message));
+
+  // Alerts are evaluated only after payment and stock reservation completed.
+  // A notification failure must never invalidate a paid order.
+  await Promise.allSettled([...new Set(reservedItems.map((item) => String(item.productId)))].map((productId) =>
+    assessLowStockForProduct(productId)
+  ));
 
   return order;
 };

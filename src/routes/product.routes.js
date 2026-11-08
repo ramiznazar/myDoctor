@@ -45,6 +45,12 @@ router.get(
   asyncHandler(productController.list)
 );
 
+router.get(
+  '/inventory/summary',
+  authGuard(['PHARMACY', 'PARAPHARMACY', 'ADMIN']),
+  asyncHandler(productController.inventorySummary)
+);
+
 /**
  * @route   GET /api/products/:id
  * @desc    Get product by ID

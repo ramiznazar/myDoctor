@@ -198,6 +198,13 @@ exports.list = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'OK', data: result });
 });
 
+/** Seller inventory totals and low-stock items. */
+exports.inventorySummary = asyncHandler(async (req, res) => {
+  const sellerId = req.userRole === 'ADMIN' && req.query.sellerId ? req.query.sellerId : req.userId;
+  const result = await productService.getInventorySummary(sellerId);
+  res.json({ success: true, message: 'OK', data: result });
+});
+
 /**
  * Delete product
  */

@@ -3,6 +3,14 @@ const { getMulterStorage } = require('../config/upload');
 const { sendError } = require('../utils/response');
 const { HTTP_STATUS } = require('../types/enums');
 
+const allowedImageMimes = new Set([
+  'image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/x-png',
+  'image/webp', 'image/gif', 'image/avif',
+]);
+const allowedImageExtensions = /\.(jpe?g|png|webp|gif|avif)$/i;
+const isAllowedImage = (file) => allowedImageMimes.has(String(file?.mimetype || '').toLowerCase()) || allowedImageExtensions.test(file?.originalname || '');
+const imageTypeMessage = 'Unsupported image format. Upload a JPG, PNG, WebP, GIF, or AVIF image.';
+
 /**
  * Upload single image middleware
  * @param {string} folderName - Folder name for upload
@@ -13,12 +21,10 @@ const uploadSingleImage = (folderName) => {
 
   const fileFilter = (req, file, cb) => {
     // Accept only image files
-    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    
-    if (allowedMimes.includes(file.mimetype)) {
+    if (isAllowedImage(file)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and WebP images are allowed.'), false);
+      cb(new Error(imageTypeMessage), false);
     }
   };
 
@@ -84,12 +90,10 @@ const uploadMultipleImages = (folderName, maxCount = 10) => {
 
   const fileFilter = (req, file, cb) => {
     // Accept only image files
-    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    
-    if (allowedMimes.includes(file.mimetype)) {
+    if (isAllowedImage(file)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and WebP images are allowed.'), false);
+      cb(new Error(imageTypeMessage), false);
     }
   };
 
@@ -97,7 +101,7 @@ const uploadMultipleImages = (folderName, maxCount = 10) => {
     storage,
     fileFilter,
     limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB per file
+      fileSize: 10 * 1024 * 1024, // 10MB per file
       files: maxCount
     }
   });
@@ -110,7 +114,7 @@ const uploadMultipleImages = (folderName, maxCount = 10) => {
             return sendError(
               res,
               'File too large',
-              [{ message: 'Each file size must be less than 5MB' }],
+              [{ message: 'Each image must be 10 MB or smaller.' }],
               HTTP_STATUS.BAD_REQUEST
             );
           }

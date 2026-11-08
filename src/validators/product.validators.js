@@ -49,6 +49,10 @@ const variantValidator = z.object({
   price: requiredNonNegativeNumber('Price'),
   discountPrice: optionalNumber,
   stock: requiredWholeNumber('Stock'),
+  lowStockThreshold: z.preprocess(
+    (value) => value === '' || value === null || value === undefined ? null : toNumberOrBlank(value),
+    z.number({ invalid_type_error: 'Low-stock alert level must be a valid number' }).int('Low-stock alert level must be a whole number').nonnegative('Low-stock alert level must be non-negative').nullable().optional(),
+  ),
   isDefault: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
@@ -85,6 +89,10 @@ const productFields = {
       return value === '' || value === null ? null : toNumberOrBlank(value);
     },
     z.number({ invalid_type_error: 'Stock must be a valid number' }).int('Stock must be a whole number').nonnegative('Stock must be non-negative').nullable().optional(),
+  ),
+  lowStockThreshold: z.preprocess(
+    (value) => value === '' || value === null || value === undefined ? undefined : toNumberOrBlank(value),
+    z.number({ invalid_type_error: 'Low-stock alert level must be a valid number' }).int('Low-stock alert level must be a whole number').nonnegative('Low-stock alert level must be non-negative').optional(),
   ),
   description: optionalText,
   i18n: z.object({

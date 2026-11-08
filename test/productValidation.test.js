@@ -39,7 +39,8 @@ test('product validation accepts populated numeric strings', () => {
       name: 'Prodotto di prova',
       price: '12.50',
       stock: '4',
-      variants: [{ name: 'Confezione standard', price: '12.50', stock: '4' }],
+      lowStockThreshold: '3',
+      variants: [{ name: 'Confezione standard', price: '12.50', stock: '4', lowStockThreshold: '2' }],
     },
     params: {},
     query: {},
@@ -48,6 +49,21 @@ test('product validation accepts populated numeric strings', () => {
   assert.equal(result.success, true);
   assert.equal(result.data.body.price, 12.5);
   assert.equal(result.data.body.variants[0].stock, 4);
+  assert.equal(result.data.body.lowStockThreshold, 3);
+  assert.equal(result.data.body.variants[0].lowStockThreshold, 2);
+});
+
+test('product validation rejects a fractional low-stock threshold', () => {
+  const result = createProductValidator.safeParse({
+    body: {
+      name: 'Prodotto di prova', price: 12.5, stock: 4, lowStockThreshold: '1.5',
+      variants: [{ name: 'Confezione standard', price: 12.5, stock: 4 }],
+    },
+    params: {}, query: {},
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.error.issues[0].path.join('.'), 'body.lowStockThreshold');
 });
 
 test('product updates retain omitted optional numeric fields as omitted', () => {
