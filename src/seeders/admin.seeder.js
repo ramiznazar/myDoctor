@@ -26,7 +26,7 @@ const fail = (message) => { throw new Error(message); };
 async function seedAdmin() {
   if (!MONGODB_URI) fail('MONGO_URI (or MONGODB_URI/DATABASE_URL) is required.');
   if (!ADMIN_EMAIL) fail('ADMIN_EMAIL is required.');
-  if (ADMIN_PASSWORD.length < 12) fail('ADMIN_PASSWORD must be at least 12 characters long.');
+  if (ADMIN_PASSWORD.length < 8) fail('ADMIN_PASSWORD must be at least 8 characters long.');
 
   try {
     await mongoose.connect(MONGODB_URI);
