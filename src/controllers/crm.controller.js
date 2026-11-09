@@ -33,6 +33,21 @@ const getCrmData = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Read-only commercial and registration feed for Leo X24. The service
+ * deliberately excludes medical records, prescription files and clinical
+ * appointment content.
+ */
+const getCrmLeads = asyncHandler(async (req, res) => {
+  const data = await crmService.getCrmLeads(req.query || {});
+  res.json({
+    success: true,
+    data,
+    message: 'CRM leads retrieved successfully',
+  });
+});
+
 module.exports = {
-  getCrmData
+  getCrmData,
+  getCrmLeads,
 };

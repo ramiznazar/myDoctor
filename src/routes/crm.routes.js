@@ -12,7 +12,10 @@ const apiKeyAuth = require('../middleware/apiKeyAuth');
 // Apply API key authentication to all CRM routes
 router.use(apiKeyAuth);
 
-// Get comprehensive CRM data
+// Leo X24 project leads and analytics feed.
+router.get('/leads', crmController.getCrmLeads);
+
+// Legacy comprehensive feed retained for backwards compatibility.
 router.get('/data', crmController.getCrmData);
 
 module.exports = router;

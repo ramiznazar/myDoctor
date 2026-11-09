@@ -26,6 +26,8 @@ const Notification = require('../src/models/notification.model');
 const Pharmacy = require('../src/models/pharmacy.model');
 const Product = require('../src/models/product.model');
 const SupportTicket = require('../src/models/supportTicket.model');
+const DoctorSubscription = require('../src/models/doctorSubscription.model');
+const Transaction = require('../src/models/transaction.model');
 const { sendUpcomingAppointmentNotifications } = require('../src/services/appointmentNotification.service');
 
 const dayName = (date) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getUTCDay()];
@@ -38,11 +40,12 @@ const tokenFor = (user) => jwt.sign(
   { expiresIn: '5m' }
 );
 
-const createApi = (baseUrl) => async (path, { method = 'GET', token, body } = {}) => {
+const createApi = (baseUrl) => async (path, { method = 'GET', token, apiKey, body } = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(apiKey ? { 'X-CRM-API-Key': apiKey } : {}),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -186,9 +189,26 @@ const seed = async () => {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     .map((dayOfWeek) => ({ dayOfWeek, timeSlots: [{ startTime: '00:00', endTime: '23:59', isAvailable: true }] }));
   await WeeklySchedule.create({ doctorId: doctor._id, appointmentDuration: 60, days });
+  const subscriptionTransaction = await Transaction.create({
+    userId: doctor._id,
+    relatedSubscriptionId: plan._id,
+    amount: plan.price,
+    currency: 'EUR',
+    status: 'SUCCESS',
+    provider: 'WORKFLOW',
+    providerReference: 'workflow-subscription-payment',
+  });
+  await DoctorSubscription.create({
+    doctorId: doctor._id,
+    planId: plan._id,
+    startDate: new Date(),
+    endDate: doctor.subscriptionExpiresAt,
+    status: 'ACTIVE',
+    transactionId: subscriptionTransaction._id,
+  });
   return {
     admin, doctor, patient, pharmacy, parapharmacy, pharmacyPlan,
-    pharmacyProfile, parapharmacyProfile, product, prescriptionProduct,
+    pharmacyProfile, parapharmacyProfile, product, prescriptionProduct, subscriptionTransaction,
   };
 };
 
@@ -217,6 +237,28 @@ const main = async () => {
     const address = server.address();
     const api = createApi(`http://127.0.0.1:${address.port}/api`);
     const multipartApi = createMultipartApi(`http://127.0.0.1:${address.port}/api`);
+
+    // Leo X24 consumes a read-only server-to-server feed. Verify the API-key
+    // boundary and commercial mapping without exposing clinical data.
+    const crmUnauthorized = await api('/crm/leads');
+    assert.equal(crmUnauthorized.status, 401, 'CRM data requires the configured project API key');
+    const crmLeads = expectOk(await api('/crm/leads?role=DOCTOR&subscriptionStatus=ACTIVE&sortBy=name&sortDirection=asc', {
+      apiKey: process.env.CRM_API_KEY,
+    }), 'CRM lead feed');
+    assert.equal(crmLeads.users.length, 1, 'CRM filters registered doctors by active subscription');
+    const crmDoctor = crmLeads.users[0];
+    assert.equal(crmDoctor.email, doctor.email, 'CRM returns the registered doctor identity');
+    assert.equal(crmDoctor.subscription.plan.name, 'PREMIUM', 'CRM maps the active subscription plan');
+    assert.equal(crmDoctor.payments.some((payment) => payment.type === 'SUBSCRIPTION' && payment.status === 'SUCCESS'), true, 'CRM maps completed subscription payments');
+    assert.equal(crmDoctor.products.length, 0, 'CRM does not fabricate products for users without products');
+    assert.equal(Object.hasOwn(crmDoctor, 'documents'), false, 'CRM feed excludes verification document data');
+    assert.equal(Object.hasOwn(crmDoctor, 'prescriptions'), false, 'CRM feed excludes prescription data');
+    const crmPatients = expectOk(await api('/crm/leads?role=PATIENT', { apiKey: process.env.CRM_API_KEY }), 'CRM patient feed');
+    assert.equal(crmPatients.users[0].address.line1, null, 'CRM never exposes a patient home or delivery address');
+    if (process.env.CRM_ONLY === 'true') {
+      console.log('PASS: Leo X24 CRM feed authentication, filtering, subscriptions, payments, products, and privacy boundary');
+      return;
+    }
 
     // Verification uploads accept professional document formats on the
     // backend, report a precise validation response, persist document types,
